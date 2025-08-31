@@ -842,21 +842,14 @@ async function reEnrollBiometricIfNeeded() {
 // ---------- Vault helpers for UI show/hide ----------
 function revealVaultUI() {
   try {
-    // Hide ALL whitepaper blocks (wherever they are)
     var wps = document.querySelectorAll('.whitepaper');
     for (var i = 0; i < wps.length; i++) { wps[i].classList.add('hidden'); }
-
-    // Hide locked screen, show vault UI
     var locked = document.getElementById('lockedScreen');
     var vault  = document.getElementById('vaultUI');
     if (locked) { locked.classList.add('hidden'); locked.style.display = 'none'; }
     if (vault)  { vault.classList.remove('hidden'); vault.style.display = 'block'; }
-
-    // Persist
     try { localStorage.setItem('vaultUnlocked', 'true'); } catch(e){}
-  } catch (e) {
-    console.error('[BioVault] revealVaultUI failed:', e);
-  }
+  } catch (e) { console.error('[BioVault] revealVaultUI failed:', e); }
 }
 
   try { localStorage.setItem(VAULT_UNLOCKED_KEY, 'true'); } catch(e){}
@@ -865,16 +858,12 @@ function restoreLockedUI() {
   try {
     var wps = document.querySelectorAll('.whitepaper');
     for (var i = 0; i < wps.length; i++) { wps[i].classList.remove('hidden'); }
-
     var locked = document.getElementById('lockedScreen');
     var vault  = document.getElementById('vaultUI');
     if (vault)  { vault.classList.add('hidden'); vault.style.display = 'none'; }
     if (locked) { locked.classList.remove('hidden'); locked.style.display = 'block'; }
-
     try { localStorage.setItem('vaultUnlocked', 'false'); } catch(e){}
-  } catch (e) {
-    console.error('[BioVault] restoreLockedUI failed:', e);
-  }
+  } catch (e) { console.error('[BioVault] restoreLockedUI failed:', e); }
 }
 
   if (locked) locked.classList.remove('hidden');
@@ -2215,38 +2204,38 @@ async function init() {
 
   // Vault Enter / Lock
   el = byId('enterVaultBtn'); if (el) el.addEventListener('click', async function(){
-  try {
-    // if first-time, enroll biometric
-    if (!vaultData.credentialId && navigator.credentials && navigator.credentials.create) {
-      const cred = await Biometric.performBiometricAuthenticationForCreation();
-      if (!cred) { UI.showAlert('Biometric setup cancelled'); return; }
-      vaultData.credentialId = Encryption.bufferToBase64(cred.rawId);
+    console.log('[BioVault] Enter Vault clicked');
+    if (isVaultLockedOut()) { UI.showAlert("Vault locked out."); return; }
+    const pin = prompt("Enter passphrase:");
+    const stored = await DB.loadVaultDataFromDB();
+    if (!stored) return;
+    derivedKey = await Vault.deriveKeyFromPIN(Utils.sanitizeInput(pin || ''), stored.salt);
+    try {
+      vaultData = await Encryption.decryptData(derivedKey, stored.iv, stored.ciphertext);
+
+      // Run robust migrations for V4 schema
+      await migrateVaultAfterDecrypt();
       await persistVaultData();
-    }
-    // then verify biometric assertion (if supported)
-    if (vaultData.credentialId && navigator.credentials && navigator.credentials.get) {
-      const ok = await Biometric.performBiometricAssertion(vaultData.credentialId);
-      if (!ok) { UI.showAlert('Biometric verification failed'); return; }
-    }
 
-    // proceed with existing flow (derive key / init segments if needed)
-    if (!derivedKey) {
-      const salt = Utils.rand(16);
-      const pin = prompt("Set passphrase:");
-      derivedKey = await Vault.deriveKeyFromPIN(Utils.sanitizeInput(pin || ''), salt);
-      await persistVaultData(salt);
-      await Segment.initializeSegments();
-    }
+      let ok = await Biometric.performBiometricAssertion(vaultData.credentialId);
+      if (!ok) {
+        const wantReEnroll = confirm("Biometric failed. Re-enroll on this device and proceed?");
+        if (wantReEnroll) ok = await reEnrollBiometricIfNeeded();
+      }
+      if (!ok) { await handleFailedAuthAttempt(); return UI.showAlert("Biometric failed."); }
 
-    vaultUnlocked = true;
-    revealVaultUI();
-    await Vault.updateBalanceFromSegments();
-  } catch (e) {
-    console.error('[BioVault] Enter failed:', e);
-    UI.showAlert('Enter failed: ' + (e.message || e));
-  }
-});
-el = byId('lockVaultBtn'); if (el) el.addEventListener('click', Vault.lockVault);
+      vaultUnlocked = true;
+      revealVaultUI();
+      await Vault.updateBalanceFromSegments();
+      Vault.updateVaultUI();
+      try { localStorage.setItem(VAULT_UNLOCKED_KEY, 'true'); } catch(e){}
+    } catch (e) {
+      console.error('[BioVault] Unlock error', e);
+      await handleFailedAuthAttempt();
+      UI.showAlert("Invalid passphrase or corrupted vault.");
+    }
+  });
+  el = byId('lockVaultBtn'); if (el) el.addEventListener('click', Vault.lockVault);
 
   // Catch-Out button -> open form modal
   el = byId('catchOutBtn'); if (el) el.addEventListener('click', function(){
@@ -2439,9 +2428,10 @@ async function loadDashboardData() {
 init();
 
 
-(function restoreUIOnBoot(){
+/*__BOOT_UI_RESTORE__*/
+(function(){
   try {
-    var s = (localStorage.getItem('vaultUnlocked') || 'false') === 'true';
-    if (s) { revealVaultUI(); } else { restoreLockedUI && restoreLockedUI(); }
-  } catch (e) { /* ignore */ }
+    var s = (localStorage.getItem('vaultUnlocked')||'false')==='true';
+    if (s) { revealVaultUI(); }
+  } catch(e){}
 })();
