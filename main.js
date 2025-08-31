@@ -2247,7 +2247,17 @@ async function init() {
   }
 });
 
-  el = byId('lockVaultBtn'); if (el) el.addEventListener('click', Vault.lockVault);
+el = byId('lockVaultBtn'); if (el) el.addEventListener('click', async function(){
+  try {
+    // تنزيل ملف backup محليًا (vault.backup) قبل القفل
+    backupVault(); // تُنشئ وتنزّل الملف - لا تغيّر أي شيء أون-تشين
+  } catch(e){
+    console.warn('[BioVault] backup before lock failed:', e);
+  } finally {
+    // بعدها أقفل الخزنة كالمعتاد
+    Vault.lockVault();
+  }
+});
 
   // Catch-Out button -> open form modal
   el = byId('catchOutBtn'); if (el) el.addEventListener('click', function(){
