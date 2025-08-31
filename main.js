@@ -2175,9 +2175,26 @@ async function init() {
       // Create initial unlocked base (1..1200) using new rules
       await Segment.initializeSegments();
 
-      vaultUnlocked = true;
-      revealVaultUI();
-      await Vault.updateBalanceFromSegments();
+      vaultUnlocked = false;
+// Ensure biometric is present and verified BEFORE unlocking UI
+try {
+  if (!vaultData.credentialId) {
+    // First-time: enroll biometric credential
+    const cred = await Biometric.performBiometricAuthenticationForCreation();
+    if (!cred) { UI.showAlert('Biometric setup was cancelled'); return; }
+    vaultData.credentialId = Encryption.bufferToBase64(cred.rawId);
+    await persistVaultData(); // save enrolled credential
+  }
+  const ok = await Biometric.performBiometricAssertion(vaultData.credentialId);
+  if (!ok) { UI.showAlert('Biometric verification failed'); return; }
+} catch (e) {
+  console.error('[BioVault] Biometric gate failed:', e);
+  UI.showAlert('Biometric failed. Try again.'); return;
+}
+
+vaultUnlocked = true;
+revealVaultUI();
+await Vault.updateBalanceFromSegments();
       Vault.updateVaultUI();
     }
   }
@@ -2213,9 +2230,26 @@ async function init() {
       }
       if (!ok) { await handleFailedAuthAttempt(); return UI.showAlert("Biometric failed."); }
 
-      vaultUnlocked = true;
-      revealVaultUI();
-      await Vault.updateBalanceFromSegments();
+      vaultUnlocked = false;
+// Ensure biometric is present and verified BEFORE unlocking UI
+try {
+  if (!vaultData.credentialId) {
+    // First-time: enroll biometric credential
+    const cred = await Biometric.performBiometricAuthenticationForCreation();
+    if (!cred) { UI.showAlert('Biometric setup was cancelled'); return; }
+    vaultData.credentialId = Encryption.bufferToBase64(cred.rawId);
+    await persistVaultData(); // save enrolled credential
+  }
+  const ok = await Biometric.performBiometricAssertion(vaultData.credentialId);
+  if (!ok) { UI.showAlert('Biometric verification failed'); return; }
+} catch (e) {
+  console.error('[BioVault] Biometric gate failed:', e);
+  UI.showAlert('Biometric failed. Try again.'); return;
+}
+
+vaultUnlocked = true;
+revealVaultUI();
+await Vault.updateBalanceFromSegments();
       Vault.updateVaultUI();
       try { localStorage.setItem(VAULT_UNLOCKED_KEY, 'true'); } catch(e){}
     } catch (e) {
@@ -2224,26 +2258,9 @@ async function init() {
       UI.showAlert("Invalid passphrase or corrupted vault.");
     }
   });
-  \1
-// --- Terminate Vault: wipe local vault data and restore locked UI (UI-only; no on-chain changes)
-el = byId('terminateVaultBtn'); if (el) el.addEventListener('click', async function(){
-  try {
-    if (!confirm("This will wipe your local BioVault (offchain). Continue?")) return;
-    await DB.clearVaultDB();
-    // Reset in-memory state (minimal fields to safe defaults)
-    vaultUnlocked = false;
-    derivedKey = null;
-    vaultData = Object.assign({}, vaultData, {
-      balanceSHE: 0, transactions: [], authAttempts: 0, lockoutTimestamp: null
-    });
-    restoreLockedUI();
-    UI.showAlert("Vault terminated locally. Import a backup or create a new vault.");
-  } catch (e) {
-    console.error("[BioVault] Terminate failed:", e);
-    UI.showAlert("Terminate failed: " + (e.message || e));
-  }
-});
-// Catch-Out button -> open form modal
+  el = byId('lockVaultBtn'); if (el) el.addEventListener('click', Vault.lockVault);
+
+  // Catch-Out button -> open form modal
   el = byId('catchOutBtn'); if (el) el.addEventListener('click', function(){
     var modalEl = document.getElementById('modalCatchOut');
     if (modalEl) {
