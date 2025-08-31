@@ -1859,7 +1859,10 @@ function backupVault() {
   const backup = JSON.stringify(vaultData);
   const blob = new Blob([backup], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'vault.backup'; a.click();
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'biovault.vault'; // امتداد متوافق مع زر الاستيراد على الهاتف
+  a.click();
 }
 
 function copyToClipboard(id) {
