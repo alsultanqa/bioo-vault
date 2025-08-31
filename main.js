@@ -841,62 +841,55 @@ async function reEnrollBiometricIfNeeded() {
 
 // ---------- Vault helpers for UI show/hide ----------
 function revealVaultUI() {
-  try {
-    var wps = document.querySelectorAll('.whitepaper');
-    for (var i = 0; i < wps.length; i++) { wps[i].classList.add('hidden'); }
-    var locked = document.getElementById('lockedScreen');
-    var vault  = document.getElementById('vaultUI');
-    if (locked) { locked.classList.add('hidden'); locked.style.display = 'none'; }
-    if (vault)  { vault.classList.remove('hidden'); vault.style.display = 'block'; }
-    try { localStorage.setItem('vaultUnlocked', 'true'); } catch(e){}
-  } catch (e) { console.error('[BioVault] revealVaultUI failed:', e); }
-}
-
+  var wp = document.querySelector('#biovault .whitepaper');
+  if (wp) wp.classList.add('hidden');
+  var locked = document.getElementById('lockedScreen');
+  var vault  = document.getElementById('vaultUI');
+  if (locked) locked.classList.add('hidden');
+  if (vault) { vault.classList.remove('hidden'); vault.style.display = 'block'; }
   try { localStorage.setItem(VAULT_UNLOCKED_KEY, 'true'); } catch(e){}
 }
 function restoreLockedUI() {
-  try {
-    var wps = document.querySelectorAll('.whitepaper');
-    for (var i = 0; i < wps.length; i++) { wps[i].classList.remove('hidden'); }
-    var locked = document.getElementById('lockedScreen');
-    var vault  = document.getElementById('vaultUI');
-    if (vault)  { vault.classList.add('hidden'); vault.style.display = 'none'; }
-    if (locked) { locked.classList.remove('hidden'); locked.style.display = 'block'; }
-    try { localStorage.setItem('vaultUnlocked', 'false'); } catch(e){}
-  } catch (e) { console.error('[BioVault] restoreLockedUI failed:', e); }
-}
-
+  var wp = document.querySelector('#biovault .whitepaper');
+  if (wp) wp.classList.remove('hidden');
+  var locked = document.getElementById('lockedScreen');
+  var vault  = document.getElementById('vaultUI');
+  if (vault) { vault.classList.add('hidden'); vault.style.display = 'none'; }
   if (locked) locked.classList.remove('hidden');
   try { localStorage.setItem(VAULT_UNLOCKED_KEY, 'false'); } catch(e){}
 }
 
-// ---------- Time/Caps Helpers ----------
-function utcDayKey(d){ const dt=new Date(d); return dt.getUTCFullYear()+"-"+String(dt.getUTCMonth()+1).padStart(2,'0')+"-"+String(dt.getUTCDate()).padStart(2,'0'); }
-function utcMonthKey(d){ const dt=new Date(d); return dt.getUTCFullYear()+"-"+String(dt.getUTCMonth()+1).padStart(2,'0'); }
-function utcYearKey(d){ const dt=new Date(d); return String(new Date(d).getUTCFullYear()); }
+// ---------- Vault helpers for UI show/hide ----------
+function revealVaultUI() {
+  const wp = document.querySelector('#biovault .whitepaper');
+  if (wp) wp.classList.add('hidden');
 
-function resetCapsIfNeeded(nowTs){
-  const dKey = utcDayKey(nowTs);
-  const mKey = utcMonthKey(nowTs);
-  const yKey = utcYearKey(nowTs);
-  if (vaultData.caps.dayKey !== dKey){ vaultData.caps.dayKey = dKey; vaultData.caps.dayUsedSeg = 0; }
-  if (vaultData.caps.monthKey !== mKey){ vaultData.caps.monthKey = mKey; vaultData.caps.monthUsedSeg = 0; }
-  if (vaultData.caps.yearKey !== yKey){ vaultData.caps.yearKey = yKey; vaultData.caps.yearUsedSeg = 0; vaultData.caps.tvmYearlyClaimed = 0; }
+  const locked = document.getElementById('lockedScreen');
+  if (locked) locked.classList.add('hidden');
+
+  const vault = document.getElementById('vaultUI');
+  if (vault) {
+    vault.classList.remove('hidden');
+    vault.style.display = 'block';
+  }
+
+  try { localStorage.setItem('vaultUnlocked', 'true'); } catch (e) {}
 }
-function canUnlockSegments(n){
-  const now = Date.now();
-  resetCapsIfNeeded(now);
-  if (vaultData.caps.dayUsedSeg + n > DAILY_CAP_SEG) return false;
-  if (vaultData.caps.monthUsedSeg + n > MONTHLY_CAP_SEG) return false;
-  if (vaultData.caps.yearUsedSeg + n > YEARLY_CAP_SEG) return false;
-  return true;
-}
-function recordUnlock(n){
-  const now = Date.now();
-  resetCapsIfNeeded(now);
-  vaultData.caps.dayUsedSeg   += n;
-  vaultData.caps.monthUsedSeg += n;
-  vaultData.caps.yearUsedSeg  += n;
+
+function restoreLockedUI() {
+  const wp = document.querySelector('#biovault .whitepaper');
+  if (wp) wp.classList.remove('hidden');
+
+  const vault = document.getElementById('vaultUI');
+  if (vault) {
+    vault.classList.add('hidden');
+    vault.style.display = 'none';
+  }
+
+  const locked = document.getElementById('lockedScreen');
+  if (locked) locked.classList.remove('hidden');
+
+  try { localStorage.setItem('vaultUnlocked', 'false'); } catch (e) {}
 }
 
 
@@ -1902,11 +1895,12 @@ function showSection(id) {
   var tgt = document.getElementById(id);
   if (tgt) tgt.classList.add('active-section');
   if (id === 'dashboard') loadDashboardData();
-  if (id === 'biovault' && vaultUnlocked) {
-    var wp = document.querySelector('#biovault .whitepaper'); if (wp) wp.classList.add('hidden');
-    var vu = document.getElementById('vaultUI'); if (vu) vu.classList.remove('hidden');
-    var ls = document.getElementById('lockedScreen'); if (ls) ls.classList.add('hidden');
-  }
+if (id === 'biovault' && vaultUnlocked) {
+  const wp = document.querySelector('#biovault .whitepaper'); if (wp) wp.classList.add('hidden');
+  const vu = document.getElementById('vaultUI'); if (vu) vu.classList.remove('hidden');
+  const ls = document.getElementById('lockedScreen'); if (ls) ls.classList.add('hidden');
+}
+
 }
 window.showSection = showSection; // expose for nav
 // Expose selected helpers for UI/console usage (prevents 'declared but never read' warnings)
@@ -2203,38 +2197,56 @@ async function init() {
   el = byId('connect-wallet');          if (el) el.addEventListener('click', Wallet.connectMetaMask);
 
   // Vault Enter / Lock
-  el = byId('enterVaultBtn'); if (el) el.addEventListener('click', async function(){
-    console.log('[BioVault] Enter Vault clicked');
-    if (isVaultLockedOut()) { UI.showAlert("Vault locked out."); return; }
-    const pin = prompt("Enter passphrase:");
-    const stored = await DB.loadVaultDataFromDB();
-    if (!stored) return;
+  el = byId('enterVaultBtn'); if (el) el.addEventListener('click', async function () {
+  console.log('[BioVault] Enter Vault clicked');
+
+  // لو في قفل مؤقت بسبب محاولات خاطئة
+  if (isVaultLockedOut()) { UI.showAlert("Vault locked out."); return; }
+
+  // اطلب كلمة المرور لفك تشفير الخزنة
+  const pin = prompt("Enter passphrase:");
+  const stored = await DB.loadVaultDataFromDB();
+  if (!stored) {
+    // ما في خزنة محفوظة بعد (أول تشغيل) – ما نغيّر biometric، فقط ننبه
+    UI.showAlert("No vault found yet. Please reload once to initialize the vault.");
+    return;
+  }
+
+  try {
+    // فك التشفير
     derivedKey = await Vault.deriveKeyFromPIN(Utils.sanitizeInput(pin || ''), stored.salt);
-    try {
-      vaultData = await Encryption.decryptData(derivedKey, stored.iv, stored.ciphertext);
+    vaultData = await Encryption.decryptData(derivedKey, stored.iv, stored.ciphertext);
 
-      // Run robust migrations for V4 schema
-      await migrateVaultAfterDecrypt();
-      await persistVaultData();
+    // ترحيلات/تصحيحات داخلية إن لزم
+    await migrateVaultAfterDecrypt();
+    await persistVaultData();
 
-      let ok = await Biometric.performBiometricAssertion(vaultData.credentialId);
-      if (!ok) {
-        const wantReEnroll = confirm("Biometric failed. Re-enroll on this device and proceed?");
-        if (wantReEnroll) ok = await reEnrollBiometricIfNeeded();
-      }
-      if (!ok) { await handleFailedAuthAttempt(); return UI.showAlert("Biometric failed."); }
-
-      vaultUnlocked = true;
-      revealVaultUI();
-      await Vault.updateBalanceFromSegments();
-      Vault.updateVaultUI();
-      try { localStorage.setItem(VAULT_UNLOCKED_KEY, 'true'); } catch(e){}
-    } catch (e) {
-      console.error('[BioVault] Unlock error', e);
-      await handleFailedAuthAttempt();
-      UI.showAlert("Invalid passphrase or corrupted vault.");
+    // ⇦ هنا نفس الـ biometric assertion بلا أي تعديل على المنطق
+    let ok = await Biometric.performBiometricAssertion(vaultData.credentialId);
+    if (!ok) {
+      const wantReEnroll = confirm("Biometric failed. Re-enroll on this device and proceed?");
+      if (wantReEnroll) ok = await reEnrollBiometricIfNeeded();
     }
-  });
+    if (!ok) {
+      await handleFailedAuthAttempt();
+      return UI.showAlert("Biometric failed.");
+    }
+
+    // نجاح الدخول → أخفِ الـ whitepaper و Locked + أظهر واجهة الخزنة
+    vaultUnlocked = true;
+    revealVaultUI();
+
+    await Vault.updateBalanceFromSegments();
+    Vault.updateVaultUI();
+
+    try { localStorage.setItem('vaultUnlocked', 'true'); } catch (e) {}
+  } catch (e) {
+    console.error('[BioVault] Unlock error', e);
+    await handleFailedAuthAttempt();
+    UI.showAlert("Invalid passphrase or corrupted vault.");
+  }
+});
+
   el = byId('lockVaultBtn'); if (el) el.addEventListener('click', Vault.lockVault);
 
   // Catch-Out button -> open form modal
@@ -2426,12 +2438,3 @@ async function loadDashboardData() {
 }
 
 init();
-
-
-/*__BOOT_UI_RESTORE__*/
-(function(){
-  try {
-    var s = (localStorage.getItem('vaultUnlocked')||'false')==='true';
-    if (s) { revealVaultUI(); }
-  } catch(e){}
-})();
