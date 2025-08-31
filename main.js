@@ -839,58 +839,59 @@ async function reEnrollBiometricIfNeeded() {
   }
 }
 
-// ---------- Vault helpers for UI show/hide ----------
+// ===== UI toggles after unlock/lock =====
 function revealVaultUI() {
-  var wp = document.querySelector('#biovault .whitepaper');
-  if (wp) wp.classList.add('hidden');
-  var locked = document.getElementById('lockedScreen');
-  var vault  = document.getElementById('vaultUI');
-  if (locked) locked.classList.add('hidden');
-  if (vault) { vault.classList.remove('hidden'); vault.style.display = 'block'; }
-  try { localStorage.setItem(VAULT_UNLOCKED_KEY, 'true'); } catch(e){}
-}
-function restoreLockedUI() {
-  var wp = document.querySelector('#biovault .whitepaper');
-  if (wp) wp.classList.remove('hidden');
-  var locked = document.getElementById('lockedScreen');
-  var vault  = document.getElementById('vaultUI');
-  if (vault) { vault.classList.add('hidden'); vault.style.display = 'none'; }
-  if (locked) locked.classList.remove('hidden');
-  try { localStorage.setItem(VAULT_UNLOCKED_KEY, 'false'); } catch(e){}
-}
+  try {
+    // أخفِ الـWhite Paper (إن وُجد)
+    var wp = document.querySelector('#biovault .whitepaper');
+    if (wp) wp.classList.add('hidden');
 
-// ---------- Vault helpers for UI show/hide ----------
-function revealVaultUI() {
-  const wp = document.querySelector('#biovault .whitepaper');
-  if (wp) wp.classList.add('hidden');
+    // أخفِ شاشة القفل + العنوان + زر الدخول
+    var locked   = document.getElementById('lockedScreen');
+    var title    = document.getElementById('lockedTitle') 
+                || document.querySelector('#lockedScreen h3'); // fallback لو ما أضفت id
+    var enterBtn = document.getElementById('enterVaultBtn');
 
-  const locked = document.getElementById('lockedScreen');
-  if (locked) locked.classList.add('hidden');
+    if (locked)   { locked.classList.add('hidden'); locked.style.display = 'none'; }
+    if (title)    { title.classList.add('hidden');  title.style.display  = 'none'; }
+    if (enterBtn) { enterBtn.classList.add('hidden'); enterBtn.style.display = 'none'; }
 
-  const vault = document.getElementById('vaultUI');
-  if (vault) {
-    vault.classList.remove('hidden');
-    vault.style.display = 'block';
+    // أظهر واجهة الخزنة فقط
+    var vault = document.getElementById('vaultUI');
+    if (vault) { vault.classList.remove('hidden'); vault.style.display = 'block'; }
+
+    try { localStorage.setItem('vaultUnlocked', 'true'); } catch(e){}
+  } catch (e) {
+    console.error('[BioVault] revealVaultUI failed:', e);
   }
-
-  try { localStorage.setItem('vaultUnlocked', 'true'); } catch (e) {}
 }
 
 function restoreLockedUI() {
-  const wp = document.querySelector('#biovault .whitepaper');
-  if (wp) wp.classList.remove('hidden');
+  try {
+    // أظهر الـWhite Paper (إن وُجد)
+    var wp = document.querySelector('#biovault .whitepaper');
+    if (wp) wp.classList.remove('hidden');
 
-  const vault = document.getElementById('vaultUI');
-  if (vault) {
-    vault.classList.add('hidden');
-    vault.style.display = 'none';
+    // أخفِ واجهة الخزنة
+    var vault = document.getElementById('vaultUI');
+    if (vault) { vault.classList.add('hidden'); vault.style.display = 'none'; }
+
+    // أظهر شاشة القفل + العنوان + زر الدخول
+    var locked   = document.getElementById('lockedScreen');
+    var title    = document.getElementById('lockedTitle') 
+                || document.querySelector('#lockedScreen h3'); // fallback
+    var enterBtn = document.getElementById('enterVaultBtn');
+
+    if (locked)   { locked.classList.remove('hidden'); locked.style.display = 'block'; }
+    if (title)    { title.classList.remove('hidden');  title.style.display  = 'block'; }
+    if (enterBtn) { enterBtn.classList.remove('hidden'); enterBtn.style.display = 'block'; }
+
+    try { localStorage.setItem('vaultUnlocked', 'false'); } catch(e){}
+  } catch (e) {
+    console.error('[BioVault] restoreLockedUI failed:', e);
   }
-
-  const locked = document.getElementById('lockedScreen');
-  if (locked) locked.classList.remove('hidden');
-
-  try { localStorage.setItem('vaultUnlocked', 'false'); } catch (e) {}
 }
+
 
 
 // ---------- Vault ----------
