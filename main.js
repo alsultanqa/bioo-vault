@@ -613,6 +613,11 @@ const DB = {
       if (!db.objectStoreNames.contains(VAULT_STORE))   db.createObjectStore(VAULT_STORE, { keyPath:'id' });
       if (!db.objectStoreNames.contains(PROOFS_STORE))  db.createObjectStore(PROOFS_STORE,{ keyPath:'id' });
       if (!db.objectStoreNames.contains(SEGMENTS_STORE))db.createObjectStore(SEGMENTS_STORE,{ keyPath:'segmentIndex' });
+     // داخل req.onupgradeneeded في DB.openVaultDB (أضف هذا الشرط إن لم يكن موجودًا)
+      if (!db.objectStoreNames.contains('backup')) {
+      db.createObjectStore('backup', { keyPath: 'id' }); // مفتاح ثابت "latest"
+}
+
       if (!db.objectStoreNames.contains('replays'))     db.createObjectStore('replays',{ keyPath:'nonce' });
     };
     req.onsuccess = (e) => resolve(e.target.result);
@@ -1864,6 +1869,41 @@ function backupVault() {
   a.href = url;
   a.download = 'biovault.vault'; // امتداد متوافق مع زر الاستيراد على الهاتف
   a.click();
+  // إنشاء لقطة (Snapshot) من حالة الخزنة والSegments والProofs
+async function exportVaultSnapshotForStore() {
+  const segments = await DB.loadSegmentsFromDB();
+  const proofsBundle = await DB.loadProofsFromDB();
+  // لا نضع مفاتيح مشتقة/حساسة في النسخة
+  const vd = JSON.parse(JSON.stringify(vaultData));
+  delete vd.masterKey; // احتياطيًا إن وُجد حقل مشابه
+
+  return {
+    id: 'latest',                 // مفتاح ثابت — يمنع التكرار
+    ts: Date.now(),
+    version: 1,                   // يمكنك رفعها لاحقًا لو تغيّر الشكل
+    vaultData: vd,
+    segments: segments,
+    proofsBundle: proofsBundle
+  };
+}
+
+// حفظ باستبدال القديم دائمًا في ObjectStore backup
+async function saveBackupReplaceLatest(backupObj) {
+  const db = await DB.openVaultDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['backup'], 'readwrite');
+    const store = tx.objectStore('backup');
+    // حذف احترازي ثم put بالمفتاح نفسه "latest"
+    const delReq = store.delete('latest');
+    delReq.onsuccess = function(){
+      const putReq = store.put(backupObj);
+      putReq.onsuccess = () => resolve(true);
+      putReq.onerror  = () => reject(putReq.error);
+    };
+    delReq.onerror = () => reject(delReq.error);
+  });
+}
+
 }
 
 function copyToClipboard(id) {
