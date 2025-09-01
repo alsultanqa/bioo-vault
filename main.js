@@ -609,63 +609,96 @@ const Encryption = {
 // ---------- DB (IndexedDB) ----------
 const DB = {
   openVaultDB: () => new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains(VAULT_STORE))   db.createObjectStore(VAULT_STORE, { keyPath:'id' });
-      if (!db.objectStoreNames.contains(PROOFS_STORE))  db.createObjectStore(PROOFS_STORE,{ keyPath:'id' });
-      if (!db.objectStoreNames.contains(SEGMENTS_STORE))db.createObjectStore(SEGMENTS_STORE,{ keyPath:'segmentIndex' });
-      if (!db.objectStoreNames.contains(HANDLES_STORE)) db.createObjectStore(HANDLES_STORE, { keyPath:'id' });
+    try {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
 
-     // داخل req.onupgradeneeded في DB.openVaultDB (أضف هذا الشرط إن لم يكن موجودًا)
-      if (!db.objectStoreNames.contains('backup')) {
-      db.createObjectStore('backup', { keyPath: 'id' }); // مفتاح ثابت "latest"
-      // داخل onupgradeneeded:
-if (!db.objectStoreNames.contains('fsHandles')) {
-  db.createObjectStore('fsHandles', { keyPath: 'id' });
-  // حفظ مقبض الملف (FileSystemFileHandle) في IndexedDB
-saveHandleToDB: async (id, handle) => {
-  const db = await DB.openVaultDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction([HANDLES_STORE], 'readwrite');
-    tx.objectStore(HANDLES_STORE).put({ id, handle });
-    tx.oncomplete = resolve;
-    tx.onerror = (e) => reject(e.target.error);
-  });
-},
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
 
-// قراءة مقبض الملف من IndexedDB (ترجع null إذا غير موجود)
-loadHandleFromDB: async (id) => {
-  const db = await DB.openVaultDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction([HANDLES_STORE], 'readonly');
-    const req = tx.objectStore(HANDLES_STORE).get(id);
-    req.onsuccess = () => resolve(req.result ? req.result.handle : null);
-    req.onerror = (e) => reject(e.target.error);
-  });
-},
+        if (!db.objectStoreNames.contains(VAULT_STORE))
+          db.createObjectStore(VAULT_STORE,   { keyPath: 'id' });
 
-// (اختياري) حذف مقبض محفوظ
-deleteHandleFromDB: async (id) => {
-  const db = await DB.openVaultDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction([HANDLES_STORE], 'readwrite');
-    tx.objectStore(HANDLES_STORE).delete(id);
-    tx.oncomplete = resolve;
-    tx.onerror = (e) => reject(e.target.error);
-  });
-},
+        if (!db.objectStoreNames.contains(PROOFS_STORE))
+          db.createObjectStore(PROOFS_STORE,  { keyPath: 'id' });
 
-}
+        if (!db.objectStoreNames.contains(SEGMENTS_STORE))
+          db.createObjectStore(SEGMENTS_STORE,{ keyPath: 'segmentIndex' });
 
-}
+        // نسخة احتياطية واحدة دائماً (id='latest')
+        if (!db.objectStoreNames.contains('backup'))
+          db.createObjectStore('backup',      { keyPath: 'id' });
 
-      if (!db.objectStoreNames.contains('replays'))     db.createObjectStore('replays',{ keyPath:'nonce' });
-    };
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror   = (e) => reject(e.target.error);
+        // تخزين FileSystemFileHandle
+        if (!db.objectStoreNames.contains('fsHandles'))
+          db.createObjectStore('fsHandles',   { keyPath: 'id' });
+
+        // مكافحة إعادة الاستخدام (nonces) — كان خارج الـscope عندك
+        if (!db.objectStoreNames.contains('replays'))
+          db.createObjectStore('replays',     { keyPath: 'nonce' });
+      };
+
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror   = (e) => reject(e.target.error || e);
+    } catch (err) {
+      reject(err);
+    }
   }),
 
+  // ---- FS handles (حفظ/قراءة مقبض ملف النسخة) ----
+  saveHandleToDB: async (id, handle) => {
+    const db = await DB.openVaultDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(['fsHandles'], 'readwrite');
+      tx.objectStore('fsHandles').put({ id: id, handle: handle });
+      tx.oncomplete = () => resolve(true);
+      tx.onerror    = (e) => reject(e.target.error);
+    });
+  },
+
+  loadHandleFromDB: async (id) => {
+    const db = await DB.openVaultDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(['fsHandles'], 'readonly');
+      const rq = tx.objectStore('fsHandles').get(id);
+      rq.onsuccess = () => resolve(rq.result ? rq.result.handle : null);
+      rq.onerror   = (e) => reject(e.target.error);
+    });
+  },
+
+  deleteHandleFromDB: async (id) => {
+    const db = await DB.openVaultDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(['fsHandles'], 'readwrite');
+      tx.objectStore('fsHandles').delete(id);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror    = (e) => reject(e.target.error);
+    });
+  },
+
+  // ---- Backup داخلي بمفتاح ثابت latest (لا تكرار) ----
+  saveBackupReplaceLatest: async (backupObj) => {
+    const db = await DB.openVaultDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(['backup'], 'readwrite');
+      const st = tx.objectStore('backup');
+      // ليس ضرورياً عمل clear؛ put بنفس المفتاح يستبدل القديم
+      st.put({ ...backupObj, id: 'latest' });
+      tx.oncomplete = () => resolve(true);
+      tx.onerror    = (e) => reject(e.target.error);
+    });
+  },
+
+  loadBackupLatest: async () => {
+    const db = await DB.openVaultDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(['backup'], 'readonly');
+      const rq = tx.objectStore('backup').get('latest');
+      rq.onsuccess = () => resolve(rq.result || null);
+      rq.onerror   = (e) => reject(e.target.error);
+    });
+  },
+
+  // ---- بقية دوالك كما هي (دون تغيير) ----
   saveVaultDataToDB: async (iv, ciphertext, saltB64) => {
     const db = await DB.openVaultDB();
     return new Promise((resolve, reject) => {
@@ -676,7 +709,7 @@ deleteHandleFromDB: async (id) => {
         ciphertext: Encryption.bufferToBase64(ciphertext),
         salt: saltB64,
         lockoutTimestamp: vaultData.lockoutTimestamp || null,
-        authAttempts: vaultData.authAttempts || 0
+        authAttempts:     vaultData.authAttempts     || 0
       });
       tx.oncomplete = resolve; tx.onerror = (e)=>reject(e.target.error);
     });
@@ -692,11 +725,11 @@ deleteHandleFromDB: async (id) => {
         if (!r) return resolve(null);
         try {
           resolve({
-            iv: Encryption.base64ToBuffer(r.iv),
-            ciphertext: Encryption.base64ToBuffer(r.ciphertext),
-            salt: r.salt ? Encryption.base64ToBuffer(r.salt) : null,
+            iv:  Encryption.base64ToBuffer(r.iv),
+            ciphertext:       Encryption.base64ToBuffer(r.ciphertext),
+            salt:             r.salt ? Encryption.base64ToBuffer(r.salt) : null,
             lockoutTimestamp: r.lockoutTimestamp || null,
-            authAttempts: r.authAttempts || 0
+            authAttempts:     r.authAttempts     || 0
           });
         } catch (e) { console.error('[BioVault] Corrupted vault record', e); resolve(null); }
       };
@@ -721,13 +754,14 @@ deleteHandleFromDB: async (id) => {
       tx.oncomplete = resolve; tx.onerror = (e)=>reject(e.target.error);
     });
   },
+
   loadProofsFromDB: async () => {
     const db = await DB.openVaultDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction([PROOFS_STORE], 'readonly');
       const get = tx.objectStore(PROOFS_STORE).get('autoProofs');
       get.onsuccess = ()=>resolve(get.result ? get.result.data : null);
-      get.onerror = (e)=>reject(e.target.error);
+      get.onerror  = (e)=>reject(e.target.error);
     });
   },
 
@@ -739,15 +773,17 @@ deleteHandleFromDB: async (id) => {
       tx.oncomplete = resolve; tx.onerror = (e)=>reject(e.target.error);
     });
   },
+
   loadSegmentsFromDB: async () => {
     const db = await DB.openVaultDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction([SEGMENTS_STORE], 'readonly');
       const getAll = tx.objectStore(SEGMENTS_STORE).getAll();
       getAll.onsuccess = ()=>resolve(getAll.result || []);
-      getAll.onerror = (e)=>reject(e.target.error);
+      getAll.onerror   = (e)=>reject(e.target.error);
     });
   },
+
   deleteSegmentFromDB: async (segmentIndex) => {
     const db = await DB.openVaultDB();
     return new Promise((resolve, reject) => {
@@ -756,24 +792,27 @@ deleteHandleFromDB: async (id) => {
       tx.oncomplete = resolve; tx.onerror = (e)=>reject(e.target.error);
     });
   },
+
   getSegment: async (segmentIndex) => {
     const db = await DB.openVaultDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction([SEGMENTS_STORE], 'readonly');
       const req = tx.objectStore(SEGMENTS_STORE).get(segmentIndex);
       req.onsuccess = () => resolve(req.result || null);
-      req.onerror = (e) => reject(e.target.error);
+      req.onerror   = (e) => reject(e.target.error);
     });
   },
+
   hasReplayNonce: async (nonce) => {
     const db = await DB.openVaultDB();
     return new Promise((res, rej) => {
       const tx = db.transaction(['replays'],'readonly');
       const g = tx.objectStore('replays').get(nonce);
       g.onsuccess = () => res(!!g.result);
-      g.onerror = (e) => rej(e.target.error);
+      g.onerror   = (e) => rej(e.target.error);
     });
   },
+
   putReplayNonce: async (nonce) => {
     const db = await DB.openVaultDB();
     return new Promise((res, rej) => {
@@ -783,6 +822,7 @@ deleteHandleFromDB: async (id) => {
     });
   }
 };
+
 
 // ---------- Biometric ----------
 const Biometric = {
