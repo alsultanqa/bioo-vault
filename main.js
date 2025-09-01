@@ -1907,15 +1907,17 @@ const Notifications = {
 async function exportFullBackup() {
   const segments = await DB.loadSegmentsFromDB();
   const proofsBundle = await DB.loadProofsFromDB();
-  const payload = { vaultData: vaultData, segments: segments, proofsBundle: proofsBundle, exportedAt: Date.now() };
+  const payload = { vaultData: vaultData, segments, proofsBundle, exportedAt: Date.now() };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = 'biovault.fullbackup.json'; a.click();
 }
+
 async function importFullBackup(file) {
   const txt = await file.text();
   const obj = JSON.parse(txt);
   if (!obj || !obj.vaultData || !Array.isArray(obj.segments)) return UI.showAlert('Invalid full backup');
+
   const stored = await DB.loadVaultDataFromDB();
   if (!derivedKey) {
     if (!stored || !stored.salt) return UI.showAlert("Unlock once before importing (no salt).");
@@ -1923,76 +1925,114 @@ async function importFullBackup(file) {
     if (!pin) return UI.showAlert("Import canceled.");
     derivedKey = await Vault.deriveKeyFromPIN(Utils.sanitizeInput(pin), stored.salt);
   }
+
+  // استرجاع البيانات
   vaultData = obj.vaultData;
   const segs = obj.segments;
   const db = await DB.openVaultDB();
   await new Promise((res, rej) => {
     const tx = db.transaction([SEGMENTS_STORE], 'readwrite');
     tx.objectStore(SEGMENTS_STORE).clear();
-    segs.forEach(function(s){ tx.objectStore(SEGMENTS_STORE).put(s); });
-    tx.oncomplete = res; tx.onerror = (e)=>rej(e.target.error);
+    segs.forEach(s => tx.objectStore(SEGMENTS_STORE).put(s));
+    tx.oncomplete = res; tx.onerror = e => rej(e.target.error);
   });
   if (obj.proofsBundle) await DB.saveProofsToDB(obj.proofsBundle);
+
   await persistVaultData();
   await Vault.updateBalanceFromSegments();
   Vault.updateVaultUI();
   UI.showAlert('Full backup imported.');
 }
+
 function exportTransactions() {
   const blob = new Blob([JSON.stringify(vaultData.transactions)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = 'transactions.json'; a.click();
 }
-function backupVault() {
-  const backup = JSON.stringify(vaultData);
-  const blob = new Blob([backup], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'biovault.vault'; // امتداد متوافق مع زر الاستيراد على الهاتف
-  a.click();
-  // إنشاء لقطة (Snapshot) من حالة الخزنة والSegments والProofs
+
+/* ========== Helpers for single-file backups ========== */
+
+// لقطة آمنة للنسخ الداخلي والخارجي (بدون مفاتيح حسّاسة)
 async function exportVaultSnapshotForStore() {
   const segments = await DB.loadSegmentsFromDB();
   const proofsBundle = await DB.loadProofsFromDB();
-  // لا نضع مفاتيح مشتقة/حساسة في النسخة
-  const vd = JSON.parse(JSON.stringify(vaultData));
-  delete vd.masterKey; // احتياطيًا إن وُجد حقل مشابه
-
-  return {
-    id: 'latest',                 // مفتاح ثابت — يمنع التكرار
-    ts: Date.now(),
-    version: 1,                   // يمكنك رفعها لاحقًا لو تغيّر الشكل
-    vaultData: vd,
-    segments: segments,
-    proofsBundle: proofsBundle
-  };
+  const vd = JSON.parse(JSON.stringify(vaultData || {}));
+  delete vd.masterKey;
+  return { id: 'latest', ts: Date.now(), version: 1, vaultData: vd, segments, proofsBundle };
 }
 
-// حفظ باستبدال القديم دائمًا في ObjectStore backup
-async function saveBackupReplaceLatest(backupObj) {
-  const db = await DB.openVaultDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(['backup'], 'readwrite');
-    const store = tx.objectStore('backup');
-    // حذف احترازي ثم put بالمفتاح نفسه "latest"
-    const delReq = store.delete('latest');
-    delReq.onsuccess = function(){
-      const putReq = store.put(backupObj);
-      putReq.onsuccess = () => resolve(true);
-      putReq.onerror  = () => reject(putReq.error);
-    };
-    delReq.onerror = () => reject(delReq.error);
-  });
+async function verifyHandlePermission(handle, write = false) {
+  const opts = { mode: write ? 'readwrite' : 'read' };
+  try {
+    if (await handle.queryPermission?.(opts) === 'granted') return true;
+    return (await handle.requestPermission?.(opts)) === 'granted';
+  } catch { return false; }
 }
 
+async function writeFileWithHandle(handle, blob) {
+  const w = await handle.createWritable({ keepExistingData: false });
+  await w.write(blob);
+  await w.close();
 }
 
-function copyToClipboard(id) {
-  const textEl = document.getElementById(id);
-  if (!textEl) return;
-  navigator.clipboard.writeText(textEl.textContent).then(function(){ UI.showAlert('Copied!'); });
+/* ========== Single-file backup (no duplicate downloads) ========== */
+
+// يستبدل القديم دائماً (IndexedDB + قرص)
+async function backupVault(opts) {
+  opts = opts || {};
+  // 1) نسخة واحدة داخل IndexedDB (id='latest')
+  const snap = await exportVaultSnapshotForStore();
+  await DB.saveBackupReplaceLatest(snap);
+
+  // 2) كتابة فوق نفس الملف على القرص باستخدام File System Access API
+  const supported = 'showSaveFilePicker' in window;
+  const fileName  = 'biovault.vault';
+
+  if (supported) {
+    try {
+      let handle = await DB.loadHandleFromDB('vaultFile');
+      if (!handle || opts.forcePicker) {
+        handle = await window.showSaveFilePicker({
+          suggestedName: fileName,
+          types: [{ description: 'BioVault backup', accept: { 'application/json': ['.vault', '.json'] } }]
+        });
+        await DB.saveHandleToDB('vaultFile', handle);
+      }
+      const ok = await verifyHandlePermission(handle, true);
+      if (!ok) throw new Error('Permission denied.');
+      const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
+      await writeFileWithHandle(handle, blob);         // ← يكتب فوق نفس الملف
+      return true;
+    } catch (e) {
+      console.warn('[BioVault] FS API failed, fallback path used:', e);
+    }
+  }
+
+  // 3) بديل بدون تنزيلات: OPFS (Chromium/Android)
+  if (navigator.storage?.getDirectory) {
+    try {
+      const root = await navigator.storage.getDirectory();
+      const fh = await root.getFileHandle(fileName, { create: true });
+      const w = await fh.createWritable();
+      await w.write(JSON.stringify(snap));
+      await w.close();
+      return true;
+    } catch (e) {
+      console.warn('[BioVault] OPFS failed, final download fallback:', e);
+    }
+  }
+
+  // 4) fallback أخير (قد يظهر في قائمة التنزيلات)
+  if (!opts.silentFallback) {
+    const blob = new Blob([JSON.stringify(snap)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = fileName; a.click();
+    URL.revokeObjectURL(url);
+  }
+  return true;
 }
+
 
 // ---------- Export to Blockchain helper ----------
 async function exportProofToBlockchain(payload) {
@@ -2571,6 +2611,26 @@ async function loadDashboardData() {
       options: { responsive:true, scales:{ y:{ beginAtZero:true } } }
     });
   }
+  async function exportVaultSnapshotForStore() {
+  const segments = await DB.loadSegmentsFromDB();
+  const proofsBundle = await DB.loadProofsFromDB();
+  const vd = JSON.parse(JSON.stringify(vaultData || {}));
+  delete vd.masterKey;
+  return { id: 'latest', ts: Date.now(), version: 1, vaultData: vd, segments, proofsBundle };
+}
+
+async function verifyHandlePermission(handle, write = false) {
+  const opts = { mode: write ? 'readwrite' : 'read' };
+  if (await handle.queryPermission?.(opts) === 'granted') return true;
+  return (await handle.requestPermission?.(opts)) === 'granted';
+}
+
+async function writeFileWithHandle(handle, blob) {
+  const w = await handle.createWritable({ keepExistingData: false });
+  await w.write(blob);
+  await w.close();
+}
+
 }
 
 init();
