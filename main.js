@@ -12,7 +12,7 @@
 
 // ---------- Base Setup / Global Constants ----------//
 const DB_NAME = 'BioVaultDB';
-const DB_VERSION = 4; // bumped for new fields
+const DB_VERSION = 5; // bumped for new fields
 const VAULT_STORE = 'vault';
 const PROOFS_STORE = 'proofs';
 const SEGMENTS_STORE = 'segments';
@@ -21,6 +21,8 @@ const EXCHANGE_RATE = 12; // 1 TVM = 12 SHE
 const INITIAL_BIO_CONSTANT = 1736565605;
 const LOCKOUT_DURATION_SECONDS = 3600;
 const MAX_AUTH_ATTEMPTS = 3;
+const HANDLES_STORE = 'fsHandles';
+
 
 // IMPORTANT: lowercase to bypass strict checksum validation in ethers v6
 const CONTRACT_ADDRESS = '0xcc79b1bc9eabc3d30a3800f4d41a4a0599e1f3c6';
@@ -613,9 +615,49 @@ const DB = {
       if (!db.objectStoreNames.contains(VAULT_STORE))   db.createObjectStore(VAULT_STORE, { keyPath:'id' });
       if (!db.objectStoreNames.contains(PROOFS_STORE))  db.createObjectStore(PROOFS_STORE,{ keyPath:'id' });
       if (!db.objectStoreNames.contains(SEGMENTS_STORE))db.createObjectStore(SEGMENTS_STORE,{ keyPath:'segmentIndex' });
+      if (!db.objectStoreNames.contains(HANDLES_STORE)) db.createObjectStore(HANDLES_STORE, { keyPath:'id' });
+
      // داخل req.onupgradeneeded في DB.openVaultDB (أضف هذا الشرط إن لم يكن موجودًا)
       if (!db.objectStoreNames.contains('backup')) {
       db.createObjectStore('backup', { keyPath: 'id' }); // مفتاح ثابت "latest"
+      // داخل onupgradeneeded:
+if (!db.objectStoreNames.contains('fsHandles')) {
+  db.createObjectStore('fsHandles', { keyPath: 'id' });
+  // حفظ مقبض الملف (FileSystemFileHandle) في IndexedDB
+saveHandleToDB: async (id, handle) => {
+  const db = await DB.openVaultDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([HANDLES_STORE], 'readwrite');
+    tx.objectStore(HANDLES_STORE).put({ id, handle });
+    tx.oncomplete = resolve;
+    tx.onerror = (e) => reject(e.target.error);
+  });
+},
+
+// قراءة مقبض الملف من IndexedDB (ترجع null إذا غير موجود)
+loadHandleFromDB: async (id) => {
+  const db = await DB.openVaultDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([HANDLES_STORE], 'readonly');
+    const req = tx.objectStore(HANDLES_STORE).get(id);
+    req.onsuccess = () => resolve(req.result ? req.result.handle : null);
+    req.onerror = (e) => reject(e.target.error);
+  });
+},
+
+// (اختياري) حذف مقبض محفوظ
+deleteHandleFromDB: async (id) => {
+  const db = await DB.openVaultDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([HANDLES_STORE], 'readwrite');
+    tx.objectStore(HANDLES_STORE).delete(id);
+    tx.oncomplete = resolve;
+    tx.onerror = (e) => reject(e.target.error);
+  });
+},
+
+}
+
 }
 
       if (!db.objectStoreNames.contains('replays'))     db.createObjectStore('replays',{ keyPath:'nonce' });
