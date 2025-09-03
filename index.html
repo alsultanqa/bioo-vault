@@ -95,6 +95,26 @@
     #vaultUI { display: none; }
     .hidden { display: none; }
     table { width: 100%; }
+    /* Locked Vault hero (responsive, cross-browser) */
+#lockedScreen .vault-hero-wrap{
+  display:flex;
+  justify-content:center;
+  margin: 0 0 16px 0;
+}
+#lockedScreen .vault-hero{
+  width: 100%;
+  max-width: 720px;     /* حجم مناسب على الديسكتوب */
+  height: auto;         /* يحافظ على التناسب */
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  object-fit: contain;  /* آمن عبر المتصفحات */
+  user-select: none;
+  pointer-events: none;
+}
+@media (max-width: 576px){
+  #lockedScreen .vault-hero{ max-width: 92vw; border-radius:16px; }
+}
+
   </style>
 
   <!-- Safe stubs so inline onclicks don't crash before app boots -->
@@ -177,6 +197,18 @@
 
     <!-- Integrated Vault UI -->
     <div id="lockedScreen" aria-live="polite">
+      <div id="lockedScreen" aria-live="polite">
+  <div class="vault-hero-wrap" aria-hidden="true">
+    <!-- بدّل المسار إذا رغبت: 2.png موجود بجانب index.html -->
+    <img class="vault-hero" src="3.png" alt="" loading="eager" decoding="async" />
+  </div>
+
+  <h3 id="lockedTitle">Locked Vault</h3>
+  <button id="enterVaultBtn" class="btn btn-primary btn-lg w-100 mb-4" type="button">
+    <i class="fas fa-unlock me-2" aria-hidden="true"></i> Enter Vault
+  </button>
+</div>
+
 <h3 id="lockedTitle">Locked Vault</h3>
       <button id="enterVaultBtn" class="btn btn-primary btn-lg w-100 mb-4" type="button">
         <i class="fas fa-unlock me-2" aria-hidden="true"></i> Enter Vault
