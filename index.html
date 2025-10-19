@@ -758,5 +758,24 @@
       }
     })();
   </script>
+   <script>
+  // عند فتح تبويب Mini Bank أظهر لوحة المصادقة داخل الصفحة
+  (function () {
+    const navMini = document.querySelector('a.nav-link[href="#"][onclick*="miniBank"]');
+    function openMiniAuth() {
+      const auth = document.getElementById('mbAuthPanel');
+      const app  = document.getElementById('mbAppPanel');
+      if (auth) auth.style.display = 'block';
+      if (app)  app.style.display  = 'none';
+      const st = document.getElementById('mbAuthState');
+      if (st) st.textContent = 'Please sign in…';
+    }
+    // عند النقر على "Mini Bank"
+    if (navMini) navMini.addEventListener('click', openMiniAuth);
+    // لو دخلنا مباشرة بالقسم من رابط/هش
+    if (location.hash === '#miniBank') openMiniAuth();
+  })();
+</script>
+
 </body>
 </html>
