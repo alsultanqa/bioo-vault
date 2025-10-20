@@ -24,14 +24,12 @@ const MAX_AUTH_ATTEMPTS = 3;
 const HANDLES_STORE = 'fsHandles';
 
 window.MB_AUTH = {
-  region: 'eu-north-1',                 // نفس منطقة الـ User Pool
-  userPoolId: 'eu-north-1_AnL8R4FnH',   // من User pool
-  clientId:   '6b482qijvo92ofpc4uqdd76f1u', // من App client
-  // 👇 هذا يجب أن يكون دومين Cognito (وليس GitHub):
-  domain:     'https://eu-north-1anl8r4fnh.auth.eu-north-1.amazoncognito.com',
-  // 👇 هذا هو رابط GitHub Pages لملف index.html الخاص بك:
-  redirectUri: 'https://alsultanqa.github.io/bioo-vault/',
-  scopes: ['openid','email','profile']
+  region: 'eu-north-1',
+  userPoolId: 'eu-north-1_AnL8R4FnH',
+  clientId: '6b482qijvo92ofpc4uqdd76f1u',
+  domain: 'eu-north-1anl8r4fnh.auth.eu-north-1.amazoncognito.com',  // ✅ من الصورة
+  redirectUri: 'https://alsultanqa.github.io/bioo-vault/',          // ✅ رابط GitHub Pages بالضبط
+  scopes: ['openid', 'email', 'profile']
 };
 
 (function () {
