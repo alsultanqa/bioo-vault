@@ -28,7 +28,7 @@ window.MB_AUTH = {
   userPoolId: 'eu-north-1_AnL8R4FnH',   // من User pool
   clientId:   '6b482qijvo92ofpc4uqdd76f1u', // من App client
   // 👇 هذا يجب أن يكون دومين Cognito (وليس GitHub):
-  domain:     'your-domain.auth.eu-north-1.amazoncognito.com',
+  domain:     'https://eu-north-1anl8r4fnh.auth.eu-north-1.amazoncognito.com',
   // 👇 هذا هو رابط GitHub Pages لملف index.html الخاص بك:
   redirectUri: 'https://alsultanqa.github.io/bioo-vault/',
   scopes: ['openid','email','profile']
