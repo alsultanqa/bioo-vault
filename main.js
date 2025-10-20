@@ -27,8 +27,8 @@ window.MB_AUTH = {
   region: 'eu-north-1',
   userPoolId: 'eu-north-1_AnL8R4FnH',
   clientId: '6b482qijvo92ofpc4uqdd76f1u',
-  domain: 'eu-north-1anl8r4fnh.auth.eu-north-1.amazoncognito.com',  // ✅ من الصورة
-  redirectUri: 'https://alsultanqa.github.io/bioo-vault/',          // ✅ رابط GitHub Pages بالضبط
+  domain: 'minibankpwa-coobio.auth.eu-north-1.amazoncognito.com',
+  redirectUri: 'https://alsultanqa.github.io/bioo-vault/',
   scopes: ['openid', 'email', 'profile']
 };
 
