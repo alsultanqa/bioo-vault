@@ -25,11 +25,13 @@ const HANDLES_STORE = 'fsHandles';
 
 window.MB_AUTH = {
   region: 'eu-north-1',
-  userPoolId: 'eu-north-1_AnL8R4FnH',
-  clientId: '6b482qijvo92ofpc4uqdd76f1u',
-  domain: 'minibankpwa-coobio.auth.eu-north-1.amazoncognito.com',
+  userPoolId: 'eu-north-1_AnL8R4FnH',                  // كما هو في صفحتك
+  clientId: '6b482qijvo92ofpc4uqdd76f1u',              // كما هو في App client
+  // ✅ استخدم الدومين الظاهر في صفحة Domain (انسخه لصقًا كما هو)
+  domain: 'https://minibankpwa-coobio.auth.eu-north-1.amazoncognito.com',
+  // ✅ خليها نفس الصفحة اللي عليها موقع GitHub Pages والموجودة في "Allowed callback URLs"
   redirectUri: 'https://alsultanqa.github.io/bioo-vault/',
-  scopes: ['openid', 'email', 'profile']
+  scopes: ['openid','email','profile']
 };
 
 (function () {
