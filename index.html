@@ -695,48 +695,56 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
 
   <!-- Boot loader: load Ethers with fallback, Amazon Cognito lib, then load main.js -->
-  <script>
-    (function () {
-      function inject(src) {
-        return new Promise(function (resolve, reject) {
-          var s = document.createElement('script');
-          s.src = src;
-          s.async = false; // keep order
-          s.onload = resolve;
-          s.onerror = reject;
-          document.head.appendChild(s);
-        });
+<script>
+  (function () {
+    function inject(src) {
+      return new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = src;
+        s.async = false;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    async function loadEthers() {
+      try {
+        await inject('https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js');
+        console.log('[BioVault] ethers ready (jsDelivr)');
+      } catch (e1) {
+        console.warn('[BioVault] jsDelivr failed, trying unpkg…');
+        await inject('https://unpkg.com/ethers@6.13.2/dist/ethers.umd.min.js');
+        console.log('[BioVault] ethers ready (unpkg)');
+      }
+    }
+    async function boot() {
+      try { await loadEthers(); } 
+      catch (e) { console.error('[BioVault] Ethers failed', e); }
+
+      /* احقن SDK الخاص بـ Cognito قبل main.js */
+      try {
+        await inject('https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6.3.9/dist/amazon-cognito-identity.min.js');
+        console.log('[MiniBank] Cognito SDK ready');
+      } catch (e) {
+        console.error('[MiniBank] Failed to load Cognito SDK', e);
       }
 
-      async function loadEthers() {
-        try {
-          await inject('https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js');
-          console.log('[BioVault] ethers ready (jsDelivr)');
-        } catch (e1) {
-          console.warn('[BioVault] jsDelivr failed, trying unpkg…');
-          await inject('https://unpkg.com/ethers@6.13.2/dist/ethers.umd.min.js');
-          console.log('[BioVault] ethers ready (unpkg)');
-        }
+      /* أخيراً حمّل تطبيقك */
+      try {
+        await inject('main.js');
+        window.__BioVaultReady = true;
+        console.log('[BioVault] main.js loaded');
+      } catch (e2) {
+        console.error('[BioVault] Failed to load main.js', e2);
       }
-
-      async function boot() {
-        try {
-          await loadEthers();
-          // Load Amazon Cognito Identity JS before main.js
-          await inject('https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6.3.9/dist/amazon-cognito-identity.min.js');
-        } catch (e) {
-          console.error('[BioVault] Failed to load prerequisites.', e);
-        } finally {
-          try {
-            await inject('main.js'); // load your app after libs
-            window.__BioVaultReady = true;
-            console.log('[BioVault] main.js loaded');
-          } catch (e2) {
-            console.error('[BioVault] Failed to load main.js', e2);
-          }
-        }
-      }
-
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', boot, { once: true });
+    } else {
+      boot();
+    }
+  })();
+</script>
       // Theme toggle (minimal, no content change)
       document.addEventListener('DOMContentLoaded', function(){
         var btn = document.getElementById('theme-toggle');
