@@ -23,16 +23,119 @@ const LOCKOUT_DURATION_SECONDS = 3600;
 const MAX_AUTH_ATTEMPTS = 3;
 const HANDLES_STORE = 'fsHandles';
 
-window.MB_AUTH = {
-  region: 'eu-north-1',
-  userPoolId: 'eu-north-1_AnL8R4FnH',                  // كما هو في صفحتك
-  clientId: '6b482qijvo92ofpc4uqdd76f1u',              // كما هو في App client
-  // ✅ استخدم الدومين الظاهر في صفحة Domain (انسخه لصقًا كما هو)
-  domain: 'https://minibankpwa-coobio.auth.eu-north-1.amazoncognito.com',
-  // ✅ خليها نفس الصفحة اللي عليها موقع GitHub Pages والموجودة في "Allowed callback URLs"
-  redirectUri: 'https://alsultanqa.github.io/bioo-vault/',
-  scopes: ['openid','email','profile']
-};
+// ========== OIDC (Cognito Hosted UI via oidc-client-ts) ==========
+(function initOIDC() {
+  // ثبّت هذه القيم من إعداداتك الفعلية
+  const MB_AUTH = {
+    region: 'eu-north-1',
+    userPoolId: 'eu-north-1_AnL8R4FnH',
+    clientId: '6b482qijvo92ofpc4uqdd76f1u',
+    domain: 'minibankpwa-coobio.auth.eu-north-1.amazoncognito.com',
+    redirectUri: 'https://alsultanqa.github.io/bioo-vault/', // يجب أن يطابق Allowed callback URL تماماً
+    scopes: ['openid', 'email', 'profile'],
+  };
+  window.MB_AUTH = MB_AUTH;
+
+  // تحقّق أن مكتبة oidc-client-ts محمّلة
+  if (!window.oidc || !window.oidc.UserManager) {
+    console.error('[MiniBank] oidc-client-ts not loaded');
+    return;
+  }
+
+  // authority = بروتوكول + الدومين المُدار من Cognito
+  const authority = `https://${MB_AUTH.domain}`;
+
+  // إعداد مدير المستخدم (Authorization Code + PKCE)
+  const userManager = new window.oidc.UserManager({
+    authority,
+    client_id: MB_AUTH.clientId,
+    redirect_uri: MB_AUTH.redirectUri,
+    response_type: 'code',
+    scope: MB_AUTH.scopes.join(' '),
+    // silent renew غير ضروري الآن
+    automaticSilentRenew: false,
+    // لمنع فتح نافذة منبثقة؛ نستخدم redirect
+    loadUserInfo: true,
+  });
+
+  // خزن المرجع عالمياً إن احتجناه
+  window.__mbUserManager = userManager;
+
+  // دالة تسجيل الدخول (توجيه لصفحة Cognito)
+  window.mbLogin = async function mbLogin() {
+    try {
+      await userManager.signinRedirect();
+    } catch (e) {
+      console.error('[MiniBank] signinRedirect error:', e);
+      alert('Login failed to start. Check console for details.');
+    }
+  };
+
+  // دالة تسجيل الخروج
+  window.mbLogout = async function mbLogout() {
+    try {
+      const user = await userManager.getUser();
+      if (user) {
+        await userManager.signoutRedirect({
+          post_logout_redirect_uri: MB_AUTH.redirectUri,
+        });
+      } else {
+        // لا يوجد جلسة؛ فقط أعِد التوجيه للصفحة الرئيسية
+        window.location.href = MB_AUTH.redirectUri;
+      }
+    } catch (e) {
+      console.error('[MiniBank] signoutRedirect error:', e);
+      window.location.href = MB_AUTH.redirectUri;
+    }
+  };
+
+  // معالجة الرجوع من Cognito (عندما يعود code=?state=?)
+  async function handleRedirectCallbackIfNeeded() {
+    const hasCode = /[?&]code=/.test(window.location.search);
+    const hasState = /[?&]state=/.test(window.location.search);
+    if (hasCode && hasState) {
+      try {
+        await userManager.signinRedirectCallback(); // يُكمل التدفق ويخزّن التوكنات
+        // نظّف باراميترات الـ URL
+        const base = MB_AUTH.redirectUri;
+        window.history.replaceState({}, '', base);
+      } catch (e) {
+        console.error('[MiniBank] signinRedirectCallback error:', e);
+        alert('Login callback failed. Please try again.');
+      }
+    }
+  }
+
+  // إظهار/إخفاء لوحة Mini Bank حسب حالة الجلسة
+  async function syncUIWithSession() {
+    try {
+      const user = await userManager.getUser();
+      const panel = document.getElementById('mbAppPanel'); // موجود في index.html
+      if (user && !user.expired) {
+        // جلسة فعّالة
+        if (panel) panel.style.display = 'block';
+      } else {
+        if (panel) panel.style.display = 'none';
+      }
+    } catch (e) {
+      console.warn('[MiniBank] getUser error:', e);
+    }
+  }
+
+  // شغّل المعالجة عند التحميل
+  (async () => {
+    await handleRedirectCallbackIfNeeded();
+    await syncUIWithSession();
+  })();
+
+  // اجعل زر الإرسال يعمل حتى لو وُضع قبل تحميل هذا السكربت
+  document.addEventListener('click', (ev) => {
+    const t = ev.target;
+    if (!t) return;
+    // زر الإرسال في index.html: <button class="btn..." onclick="mbLogin()">Sign In with Cognito</button>
+    // لا تغيير على HTML؛ فقط تأكدنا أن window.mbLogin موجودة وتعمل.
+  }, true);
+})();
 
 (function () {
   function buildHostedUrl(type) {
