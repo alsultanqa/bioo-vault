@@ -223,17 +223,6 @@
     </div>
   </div>
 
-  <!-- لوحة التحويلات (تظهر بعد تسجيل الدخول) -->
-  <div id="mbAppPanel" class="card p-3" style="display:none">
-    <h4 class="mb-3">Send Money</h4>
-    <div class="row g-2">
-      <div class="col-md-4"><input id="mbToEmail" class="form-control" type="email" placeholder="Recipient email (registered)"></div>
-      <div class="col-md-3"><input id="mbAmount" class="form-control" type="number" min="1" step="0.01" placeholder="Amount (e.g., 50.00)"></div>
-      <div class="col-md-3"><input id="mbMemo" class="form-control" type="text" placeholder="Note (optional)"></div>
-      <div class="col-md-2 d-grid">
-        <button class="btn btn-primary" id="mbBtnSend" type="button">Send</button>
-      </div>
-    </div>
 
     <hr class="my-4"/>
 
@@ -249,21 +238,21 @@
   </button>
 </section>
   <script>
-  // افتح نموذج المصادقة داخل الصفحة بدل إعادة التوجيه
-  window.mbLogin = function () {
-    const p = document.getElementById('mbAuthPanel');
-    if (p) p.style.display = 'block';
-    const a = document.getElementById('mbAppPanel');
-    if (a) a.style.display = 'none';
-    const s = document.getElementById('mbAuthState');
-    if (s) s.textContent = 'Please sign in…';
-  };
+// (اختياري) لفتح لوحة auth اليدوية بدون Hosted UI
+window.mbShowAuthPanel = function () {
+  const p = document.getElementById('mbAuthPanel');
+  if (p) p.style.display = 'block';
+  const a = document.getElementById('mbAppPanel');
+  if (a) a.style.display = 'none';
+  const s = document.getElementById('mbAuthState');
+  if (s) s.textContent = 'Please sign in…';
+};
 
   // (اختياري) إعداد رابط GitHub عبر Hosted UI
   // غيّر هذه القيم لتناسب بيئتك في Cognito:
-  const COGNITO_DOMAIN  = 'YOUR_DOMAIN.auth.me-central-1.amazoncognito.com';
-  const COGNITO_CLIENT  = 'YOUR_APP_CLIENT_ID';
-  const REDIRECT_URI    = window.location.origin + '/'; // نفس صفحتك الحالية
+const COGNITO_DOMAIN = 'your-domain.auth.eu-north-1.amazoncognito.com';
+const COGNITO_CLIENT = '6b482qijvo92ofpc4uqdd76f1u';
+const REDIRECT_URI   = 'https://alsultanqa.github.io/bioo-vault/';
   const gh = document.getElementById('mbGithubLogin');
   if (gh) {
     const hosted = `https://${COGNITO_DOMAIN}/login?client_id=${encodeURIComponent(COGNITO_CLIENT)}&response_type=code&scope=openid+email+profile&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&identity_provider=GitHub`;
