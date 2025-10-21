@@ -138,53 +138,6 @@ const HANDLES_STORE = 'fsHandles';
 })();
 
 
-  function parseHashTokens() {
-    if (!location.hash.startsWith('#')) return null;
-    const h = new URLSearchParams(location.hash.substring(1));
-    const id_token = h.get('id_token');
-    const access_token = h.get('access_token');
-    const expires_in = h.get('expires_in');
-    if (id_token || access_token) {
-      // نظّف الهاش من الرابط بعد القراءة
-      history.replaceState({}, document.title, window.location.pathname);
-      return { id_token, access_token, expires_in: expires_in ? +expires_in : null };
-    }
-    return null;
-  }
-
-  async function afterAuth(tokens) {
-    // مثال بسيط: أظهر لوحة التحويلات واعتبر المستخدم سجل دخول
-    document.getElementById('mbAppPanel').style.display = 'block';
-    // احفظ بالذاكرة المؤقتة
-    localStorage.setItem('mb_tokens', JSON.stringify(tokens));
-    console.log('[MiniBank] signed in', tokens);
-  }
-
-  window.mbLogin = function mbLogin() {
-    // إعادة توجيه إلى Hosted UI
-    window.location.assign(buildHostedUrl('authorize'));
-  };
-
-  window.mbLogout = function mbLogout() {
-    localStorage.removeItem('mb_tokens');
-    document.getElementById('mbAppPanel').style.display = 'none';
-    // خيار: تسجيل خروج عبر Hosted UI أيضاً
-    // window.location.assign(buildHostedUrl('logout'));
-  };
-
-  // عند الرجوع من Hosted UI – امسك التوكينات
-  const tokens = parseHashTokens();
-  if (tokens) afterAuth(tokens);
-  else {
-    // إن كان عندنا جلسة محفوظة سابقاً فعّل الواجهة
-    const cached = localStorage.getItem('mb_tokens');
-    if (cached) {
-      try { afterAuth(JSON.parse(cached)); } catch {}
-    }
-  }
-})();
-
-
 
 // IMPORTANT: lowercase to bypass strict checksum validation in ethers v6
 const CONTRACT_ADDRESS = '0xcc79b1bc9eabc3d30a3800f4d41a4a0599e1f3c6';
