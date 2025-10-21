@@ -137,18 +137,6 @@ const HANDLES_STORE = 'fsHandles';
   }, true);
 })();
 
-(function () {
-  function buildHostedUrl(type) {
-    const c = window.MB_AUTH;
-    const base = `https://${c.domain}/oauth2/${type}`;
-    const p = new URLSearchParams({
-      client_id: c.clientId,
-      redirect_uri: c.redirectUri,
-      response_type: 'token', // implicit
-      scope: c.scopes.join(' ')
-    });
-    return `${base}?${p.toString()}`;
-  }
 
   function parseHashTokens() {
     if (!location.hash.startsWith('#')) return null;
