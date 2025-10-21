@@ -250,7 +250,7 @@ window.mbShowAuthPanel = function () {
 
   // (اختياري) إعداد رابط GitHub عبر Hosted UI
   // غيّر هذه القيم لتناسب بيئتك في Cognito:
-const COGNITO_DOMAIN = 'your-domain.auth.eu-north-1.amazoncognito.com';
+const COGNITO_DOMAIN = 'minibankpwa-coobio.auth.eu-north-1.amazoncognito.com';
 const COGNITO_CLIENT = '6b482qijvo92ofpc4uqdd76f1u';
 const REDIRECT_URI   = 'https://alsultanqa.github.io/bioo-vault/';
   const gh = document.getElementById('mbGithubLogin');
@@ -690,12 +690,13 @@ const REDIRECT_URI   = 'https://alsultanqa.github.io/bioo-vault/';
       return new Promise(function (resolve, reject) {
         var s = document.createElement('script');
         s.src = src;
-        s.async = false;
+        s.async = false; // نضمن الترتيب
         s.onload = resolve;
         s.onerror = reject;
         document.head.appendChild(s);
       });
     }
+
     async function loadEthers() {
       try {
         await inject('https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js');
@@ -706,27 +707,29 @@ const REDIRECT_URI   = 'https://alsultanqa.github.io/bioo-vault/';
         console.log('[BioVault] ethers ready (unpkg)');
       }
     }
+
     async function boot() {
-      try { await loadEthers(); } 
-      catch (e) { console.error('[BioVault] Ethers failed', e); }
-
-      /* احقن SDK الخاص بـ Cognito قبل main.js */
       try {
-        await inject('https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6.3.9/dist/amazon-cognito-identity.min.js');
-        console.log('[MiniBank] Cognito SDK ready');
+        // 1) حمّل Ethers (للوالدجيت البلوكتشين)
+        await loadEthers();
+
+        // 2) (اختياري) لو تحتاج SDK إضافي، حمّله هنا داخل boot وليس خارجها
+        // مثال: await inject('https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6.3.9/dist/amazon-cognito-identity.min.js');
+
       } catch (e) {
-        console.error('[MiniBank] Failed to load Cognito SDK', e);
-      }
-
-      /* أخيراً حمّل تطبيقك */
-      try {
-        await inject('main.js');
-        window.__BioVaultReady = true;
-        console.log('[BioVault] main.js loaded');
-      } catch (e2) {
-        console.error('[BioVault] Failed to load main.js', e2);
+        console.error('[BioVault] Failed to load ethers from both CDNs — blockchain features may be disabled.', e);
+      } finally {
+        try {
+          // 3) أخيرًا: حمّل تطبيقك
+          await inject('main.js');
+          window.__BioVaultReady = true;
+          console.log('[BioVault] main.js loaded');
+        } catch (e2) {
+          console.error('[BioVault] Failed to load main.js', e2);
+        }
       }
     }
+
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', boot, { once: true });
     } else {
@@ -734,26 +737,24 @@ const REDIRECT_URI   = 'https://alsultanqa.github.io/bioo-vault/';
     }
   })();
 </script>
-      // Theme toggle (minimal, no content change)
-      document.addEventListener('DOMContentLoaded', function(){
-        var btn = document.getElementById('theme-toggle');
-        if(btn){
-          var saved = localStorage.getItem('bc-theme') || 'dark';
-          if(saved === 'dark'){ document.body.classList.add('dark-mode'); btn.setAttribute('aria-pressed','true'); }
-          btn.addEventListener('click', function(){
-            var isDark = document.body.classList.toggle('dark-mode');
-            btn.setAttribute('aria-pressed', String(isDark));
-            localStorage.setItem('bc-theme', isDark ? 'dark' : 'light');
-          });
-        }
-      });
 
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', boot, { once: true });
-      } else {
-        boot();
-      }
-    })();
+<script>
+  // Theme toggle (clean)
+  document.addEventListener('DOMContentLoaded', function(){
+    var btn = document.getElementById('theme-toggle');
+    if(!btn) return;
+    var saved = localStorage.getItem('bc-theme') || 'dark';
+    if(saved === 'dark'){
+      document.body.classList.add('dark-mode');
+      btn.setAttribute('aria-pressed','true');
+    }
+    btn.addEventListener('click', function(){
+      var isDark = document.body.classList.toggle('dark-mode');
+      btn.setAttribute('aria-pressed', String(isDark));
+      localStorage.setItem('bc-theme', isDark ? 'dark' : 'light');
+    });
+  });
+</script>
   </script>
    <script>
   // عند فتح تبويب Mini Bank أظهر لوحة المصادقة داخل الصفحة
