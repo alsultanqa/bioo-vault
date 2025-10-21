@@ -2749,3 +2749,4 @@ async function writeFileWithHandle(handle, blob) {
 }
 
 init();
+
