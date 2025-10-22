@@ -136,6 +136,244 @@ const HANDLES_STORE = 'fsHandles';
     // لا تغيير على HTML؛ فقط تأكدنا أن window.mbLogin موجودة وتعمل.
   }, true);
 })();
+// ---------- UI helpers for sign-in state ----------
+async function onUserSignedIn(user) {
+  // user: object returned by oidc-client-ts (has profile, access_token, etc.)
+  console.log('Signed in user:', user);
+  // Hide auth panel, show app panel
+  const authPanel = document.getElementById('mbAuthPanel');
+  const appPanel = document.getElementById('mbAppPanel');
+  if (authPanel) authPanel.style.display = 'none';
+  if (appPanel) appPanel.style.display = 'block';
+
+  // Display user info
+  const name = (user.profile && (user.profile.name || user.profile.email)) || 'User';
+  const email = user.profile && user.profile.email || '';
+  document.getElementById('mbAuthState').textContent = 'Signed in: ' + name;
+  // fill profile fields
+  const profileName = document.getElementById('profileName'); if (profileName) profileName.value = name;
+  const profileEmail = document.getElementById('profileEmail'); if (profileEmail) profileEmail.value = email;
+
+  // enable buttons
+  const editBtn = document.getElementById('btnEditProfile');
+  if (editBtn) editBtn.disabled = false;
+  const openCard = document.getElementById('btnOpenLinkCard');
+  if (openCard) openCard.disabled = false;
+
+  // store locally for UI usage
+  window.__currentUser = user;
+}
+
+// When user signs out -> reverse
+function onUserSignedOut() {
+  document.getElementById('mbAuthState').textContent = 'Signed out';
+  const authPanel = document.getElementById('mbAuthPanel');
+  const appPanel = document.getElementById('mbAppPanel');
+  if (authPanel) authPanel.style.display = 'block';
+  if (appPanel) appPanel.style.display = 'none';
+  window.__currentUser = null;
+}
+
+// Hook oidc events (assuming window.__mbUserManager set earlier)
+if (window.__mbUserManager) {
+  // when library loads user info (after redirect)
+  window.__mbUserManager.events.addUserLoaded(function(user) {
+    onUserSignedIn(user);
+  });
+  window.__mbUserManager.events.addUserUnloaded(function() {
+    onUserSignedOut();
+  });
+  // also try to sync on startup
+  (async () => {
+    try {
+      const u = await window.__mbUserManager.getUser();
+      if (u) onUserSignedIn(u);
+    } catch(e) { console.warn('getUser failed', e); }
+  })();
+}
+
+// ---------- Edit profile form submit ----------
+document.addEventListener('submit', async function(ev) {
+  if (ev.target && ev.target.id === 'formEditProfile') {
+    ev.preventDefault();
+    const name = document.getElementById('profileName').value.trim();
+    const email = document.getElementById('profileEmail').value.trim();
+    const phone = document.getElementById('profilePhone').value.trim();
+
+    // call your backend to update profile (secure)
+    try {
+      const token = (window.__currentUser && window.__currentUser.access_token) || null;
+      const res = await fetch('/api/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', ...(token?{ 'Authorization':'Bearer '+token }:{} ) },
+        body: JSON.stringify({ name, email, phone })
+      });
+      if (!res.ok) throw new Error('Update failed: ' + res.status);
+      const data = await res.json();
+      // update UI
+      document.getElementById('mbAuthState').textContent = 'Signed in: ' + (data.name || name);
+      // close modal
+      const modal = bootstrap.Modal.getInstance(document.getElementById('modalEditProfile'));
+      if (modal) modal.hide();
+      alert('Profile updated.');
+    } catch (e) {
+      console.error('Profile update error', e);
+      alert('Failed to update profile.');
+    }
+  }
+});
+ 
+let stripe = null;
+let cardElement = null;
+
+document.getElementById('btnOpenLinkCard').addEventListener('click', async function(){
+  // فتح المودال
+  const modalEl = document.getElementById('modalLinkCard');
+  const modal = new bootstrap.Modal(modalEl);
+  modal.show();
+
+  // طلب من الخادم إنشاء SetupIntent (server returns client_secret)
+  try {
+    const token = (window.__currentUser && window.__currentUser.access_token) || null;
+    const r = await fetch('/api/create-setup-intent', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', ...(token?{ 'Authorization':'Bearer '+token }:{} ) }
+    });
+    const j = await r.json();
+    const clientSecret = j.client_secret;
+    // init stripe
+    stripe = Stripe(j.publishableKey); // server should return publishableKey too or set globally
+    const elements = stripe.elements();
+    cardElement = elements.create('card');
+    cardElement.mount('#cardElement');
+
+    cardElement.on('change', function(e){
+      const err = document.getElementById('cardErrors');
+      err.textContent = e.error ? e.error.message : '';
+    });
+
+    // submit handler for the form handled below
+  } catch (e) {
+    console.error('SetupIntent create failed', e);
+    alert('Cannot initialize payment form.');
+  }
+});
+
+// handle link card form submit
+document.addEventListener('submit', async function(ev){
+  if (ev.target && ev.target.id === 'formLinkCard') {
+    ev.preventDefault();
+    if (!stripe || !cardElement) return alert('Payment system not initialized.');
+
+    const token = (window.__currentUser && window.__currentUser.access_token) || null;
+    // Retrieve client_secret from server (or stored earlier). For simplicity request again:
+    const resp = await fetch('/api/create-setup-intent', { method:'POST', headers: {'Content-Type':'application/json', ...(token?{ 'Authorization':'Bearer '+token }:{} ) }});
+    const j = await resp.json();
+    const clientSecret = j.client_secret;
+
+    const { setupIntent, error } = await stripe.confirmCardSetup(clientSecret, {
+      payment_method: { card: cardElement }
+    });
+
+    if (error) {
+      document.getElementById('cardErrors').textContent = error.message || 'Card error';
+      return;
+    }
+
+    // success: send payment_method id to server to attach to customer
+    const pmId = setupIntent.payment_method;
+    const res = await fetch('/api/save-payment-method', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', ...(token?{ 'Authorization':'Bearer '+token }:{} ) },
+      body: JSON.stringify({ payment_method: pmId })
+    });
+    if (!res.ok) return alert('Server failed to save payment method');
+    alert('Card linked successfully.');
+    const m = bootstrap.Modal.getInstance(document.getElementById('modalLinkCard'));
+    if (m) m.hide();
+  }
+});
+
+// server.js (Node/Express)
+const express = require('express');
+const bodyParser = require('body-parser');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY); // put your secret key in ENV
+const app = express();
+app.use(bodyParser.json());
+
+// dummy auth middleware (استبدل مع التحقق الحقيقي من JWT)
+function ensureAuth(req, res, next){
+  // تحقق من Authorization: Bearer <token> و استخرج userId
+  req.user = { id: 'user_123', email: 'test@example.com' }; // مثال
+  next();
+}
+
+app.post('/api/create-setup-intent', ensureAuth, async (req, res) => {
+  try {
+    // in production, create or fetch Stripe Customer for this user
+    let customerId = 'cus_example_for_'+req.user.id; // you must map user -> stripe customer
+    // For demo: create a new customer
+    const customer = await stripe.customers.create({ email: req.user.email, metadata: { appUserId: req.user.id } });
+    customerId = customer.id;
+
+    const si = await stripe.setupIntents.create({ customer: customerId });
+    res.json({ client_secret: si.client_secret, publishableKey: process.env.STRIPE_PUBLISHABLE_KEY });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/save-payment-method', ensureAuth, async (req, res) => {
+  try {
+    const { payment_method } = req.body;
+    // attach PM to stripe customer (you must have saved customer mapping earlier)
+    const customerId = 'cus_example_for_'+req.user.id; // retrieve actual mapping!
+    await stripe.paymentMethods.attach(payment_method, { customer: customerId });
+    // optionally set as default
+    await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: payment_method } });
+    // save pm id in your DB linked to user
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/update-profile', ensureAuth, async (req, res) => {
+  // validate input, update your DB
+  const { name, email, phone } = req.body;
+  // update DB...
+  res.json({ name, email, phone });
+});
+
+app.listen(3000, ()=>console.log('Server listening on 3000'));
+
+document.getElementById('btnSendTransfer').addEventListener('click', () => {
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('modalTransfer')).show();
+});
+
+document.getElementById('formTransfer').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const to = document.getElementById('transferTo').value;
+  const amount = parseFloat(document.getElementById('transferAmount').value);
+  const memo = document.getElementById('transferMemo').value;
+  try {
+    const token = (window.__currentUser && window.__currentUser.access_token) || null;
+    const r = await fetch('/api/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', ...(token?{ 'Authorization':'Bearer '+token }:{} ) },
+      body: JSON.stringify({ to, amount, memo })
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Transfer failed');
+    alert('Transfer submitted');
+    bootstrap.Modal.getInstance(document.getElementById('modalTransfer')).hide();
+  } catch (e) {
+    alert('Transfer error: ' + e.message);
+  }
+});
+
 
 
 
@@ -2747,5 +2985,184 @@ async function writeFileWithHandle(handle, blob) {
 }
 
 }
+/* ===== MiniBank: post-OIDC UI logic + Profile + Payments + Transfer ===== */
+
+(function () {
+  const $ = (id) => document.getElementById(id);
+
+  // عناصر الواجهة
+  const authPanel = $('mbAuthPanel');
+  const appPanel  = $('mbAppPanel');
+  const stateBadge= $('mbAuthState');
+  const editBtn   = $('btnEditProfile');
+  const linkBtn   = $('btnOpenLinkCard');
+  const sendBtn   = $('btnSendTransfer');
+  const signOutBtn= $('mbBtnSignOut');
+
+  // حالة المستخدم الحالية (من oidc-client-ts)
+  let currentUser = null;
+
+  // ---- إظهار/إخفاء حسب حالة الدخول ----
+  function onUserSignedIn(user) {
+    currentUser = user;
+    if (authPanel) authPanel.style.display = 'none';
+    if (appPanel)  appPanel.style.display  = 'block';
+    if (stateBadge) stateBadge.textContent = 'Signed in: ' + ((user.profile && (user.profile.name || user.profile.email)) || 'User');
+    if (editBtn) editBtn.disabled = false;
+    if (linkBtn) linkBtn.disabled = false;
+
+    // تعبئة نموذج التعديل
+    if ($('profileName'))  $('profileName').value  = (user.profile && (user.profile.name || '')) || '';
+    if ($('profileEmail')) $('profileEmail').value = (user.profile && (user.profile.email || '')) || '';
+  }
+
+  function onUserSignedOut() {
+    currentUser = null;
+    if (authPanel) authPanel.style.display = 'block';
+    if (appPanel)  appPanel.style.display  = 'none';
+    if (stateBadge) stateBadge.textContent = 'Signed out';
+    if (editBtn) editBtn.disabled = true;
+    if (linkBtn) linkBtn.disabled = true;
+  }
+
+  // ---- وصل أحداث OIDC لو المانجر موجود ----
+  function wireOIDC() {
+    const um = window.__mbUserManager;
+    if (!um) return; // سيتم استدعاؤها ثانية لاحقاً
+    try {
+      um.events.addUserLoaded(onUserSignedIn);
+      um.events.addUserUnloaded(onUserSignedOut);
+      um.getUser().then(u => { if (u && !u.expired) onUserSignedIn(u); else onUserSignedOut(); });
+    } catch (e) { console.warn('[MiniBank] wireOIDC error', e); }
+  }
+
+  // حاول ربط OIDC فورياً ثم أعد المحاولة إن تأخر التحميل
+  if (window.__mbUserManager) wireOIDC();
+  else {
+    let tries = 0;
+    const iv = setInterval(() => {
+      tries++;
+      if (window.__mbUserManager) { clearInterval(iv); wireOIDC(); }
+      if (tries > 50) clearInterval(iv);
+    }, 200);
+  }
+
+  // زر تسجيل الخروج (Hosted UI)
+  if (signOutBtn) signOutBtn.addEventListener('click', () => {
+    if (window.mbLogout) window.mbLogout(); else onUserSignedOut();
+  });
+
+  // ====== تعديل الحساب ======
+  if (editBtn) editBtn.addEventListener('click', () => {
+    const m = new bootstrap.Modal($('modalEditProfile')); m.show();
+  });
+
+  document.addEventListener('submit', async (ev) => {
+    if (ev.target && ev.target.id === 'formEditProfile') {
+      ev.preventDefault();
+      const name  = $('profileName').value.trim();
+      const email = $('profileEmail').value.trim();
+      const phone = $('profilePhone').value.trim();
+      try {
+        const token = currentUser && currentUser.access_token;
+        const res = await fetch('/api/update-profile', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json', ...(token ? { 'Authorization': 'Bearer '+token } : {}) },
+          body: JSON.stringify({ name, email, phone })
+        });
+        if (!res.ok) throw new Error('' + res.status);
+        const data = await res.json();
+        if (stateBadge) stateBadge.textContent = 'Signed in: ' + (data.name || name);
+        bootstrap.Modal.getInstance($('modalEditProfile')).hide();
+        alert('Profile updated.');
+      } catch (e) {
+        console.error(e); alert('Failed to update profile.');
+      }
+    }
+  });
+
+  // ====== الدفع / ربط البطاقة (Stripe Elements) ======
+  let stripe = null;
+  let cardElement = null;
+  async function ensureStripe(clientPublishableKey) {
+    if (!stripe) stripe = window.Stripe(clientPublishableKey);
+    if (!cardElement) {
+      const elements = stripe.elements();
+      cardElement = elements.create('card');
+      cardElement.mount('#cardElement');
+      cardElement.on('change', (e) => { $('cardErrors').textContent = e.error ? e.error.message : ''; });
+    }
+  }
+
+  if (linkBtn) linkBtn.addEventListener('click', async () => {
+    const token = currentUser && currentUser.access_token;
+    try {
+      // اطلب إنشاء SetupIntent من الخادم
+      const r = await fetch('/api/create-setup-intent', {
+        method:'POST',
+        headers: { 'Content-Type':'application/json', ...(token ? { 'Authorization':'Bearer '+token } : {}) }
+      });
+      const j = await r.json();
+      if (!j || !j.client_secret || !j.publishableKey) throw new Error('Bad server response');
+      await ensureStripe(j.publishableKey);
+      // خزّن client_secret لهذه الجلسة داخل العنصر
+      $('modalLinkCard').dataset.cs = j.client_secret;
+      new bootstrap.Modal($('modalLinkCard')).show();
+    } catch (e) {
+      console.error(e); alert('Cannot initialize payment form.');
+    }
+  });
+
+  document.addEventListener('submit', async (ev) => {
+    if (ev.target && ev.target.id === 'formLinkCard') {
+      ev.preventDefault();
+      try {
+        const cs = $('modalLinkCard').dataset.cs;
+        if (!stripe || !cardElement || !cs) throw new Error('Stripe not initialized');
+        const { setupIntent, error } = await stripe.confirmCardSetup(cs, { payment_method: { card: cardElement } });
+        if (error) { $('cardErrors').textContent = error.message || 'Card error'; return; }
+        const pmId = setupIntent.payment_method;
+        const token = currentUser && currentUser.access_token;
+        const res = await fetch('/api/save-payment-method', {
+          method:'POST',
+          headers: { 'Content-Type':'application/json', ...(token ? { 'Authorization':'Bearer '+token } : {}) },
+          body: JSON.stringify({ payment_method: pmId })
+        });
+        if (!res.ok) throw new Error('save pm failed');
+        alert('Card linked successfully.');
+        bootstrap.Modal.getInstance($('modalLinkCard')).hide();
+      } catch (e) { console.error(e); alert('Link card failed.'); }
+    }
+  });
+
+  // ====== تحويل داخلي بسيط ======
+  if (sendBtn) sendBtn.addEventListener('click', () => {
+    new bootstrap.Modal($('modalTransfer')).show();
+  });
+
+  document.addEventListener('submit', async (ev) => {
+    if (ev.target && ev.target.id === 'formTransfer') {
+      ev.preventDefault();
+      const to = $('transferTo').value.trim();
+      const amount = parseFloat($('transferAmount').value);
+      const memo = $('transferMemo').value.trim();
+      if (!to || !amount || amount <= 0) return;
+      try {
+        const token = currentUser && currentUser.access_token;
+        const r = await fetch('/api/transfer', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json', ...(token ? { 'Authorization':'Bearer '+token } : {}) },
+          body: JSON.stringify({ to, amount, memo })
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j && j.error || 'Transfer failed');
+        alert('Transfer submitted.');
+        bootstrap.Modal.getInstance($('modalTransfer')).hide();
+      } catch (e) { console.error(e); alert('Transfer error.'); }
+    }
+  });
+
+})();
+
 
 init();
