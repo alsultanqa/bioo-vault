@@ -28,6 +28,8 @@
   <!-- PWA Manifest -->
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#007bff" />
+  <script src="https://js.stripe.com/v3/"></script>
+
 
   <style>
     body {
@@ -97,6 +99,74 @@
     .hidden { display: none; }
     table { width: 100%; }
   </style>
+  <!-- Edit Profile Modal -->
+<div class="modal fade" id="modalEditProfile" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="formEditProfile" novalidate>
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Account</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">Display name</label>
+          <input id="profileName" class="form-control" type="text" required />
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Email</label>
+          <input id="profileEmail" class="form-control" type="email" required />
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Phone</label>
+          <input id="profilePhone" class="form-control" type="tel" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnSaveProfile" class="btn btn-primary" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Link Card / Payment Modal -->
+<div class="modal fade" id="modalLinkCard" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="formLinkCard" novalidate>
+      <div class="modal-header">
+        <h5 class="modal-title">Link card / Pay</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="cardElement" class="mb-3"></div>
+        <div id="cardErrors" class="text-danger small"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnLinkCard" class="btn btn-success" type="submit">Link Card</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Transfer Modal -->
+<div class="modal fade" id="modalTransfer" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="formTransfer" class="modal-content" novalidate>
+      <div class="modal-header">
+        <h5 class="modal-title">Send Money</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input id="transferTo" class="form-control mb-2" placeholder="Recipient (email or Bio-IBAN)" required />
+        <input id="transferAmount" class="form-control mb-2" type="number" min="0.01" step="0.01" placeholder="Amount" required />
+        <input id="transferMemo" class="form-control" placeholder="Memo (optional)" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" type="submit">Send</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 
   <!-- Safe stubs so inline onclicks don't crash before app boots -->
   <script>
@@ -149,6 +219,12 @@
   </nav>
    
    <section id="miniBank" class="section container fade-in" aria-label="Mini Bank">
+    <div class="d-flex gap-2 mb-3">
+  <button id="btnEditProfile" class="btn btn-outline-light" type="button" disabled>Edit Account</button>
+  <button id="btnOpenLinkCard" class="btn btn-success" type="button" disabled>Link Card / Add Payment</button>
+  <button id="btnSendTransfer" class="btn btn-primary" type="button">Send Money</button>
+</div>
+
   <!-- أزرار علوية -->
   <div class="d-flex gap-2 mb-3">
     <button class="btn btn-primary" type="button" onclick="mbLogin()">Sign In with Cognito</button>
@@ -176,6 +252,19 @@
         <button class="btn btn-success" id="mbBtnLogin" type="button">Sign In</button>
       </div>
     </div>
+
+    <!-- Transfer Modal -->
+<div class="modal fade" id="modalTransfer" tabindex="-1"><div class="modal-dialog">
+<form id="formTransfer" class="modal-content">
+  <div class="modal-header"><h5>Send Money</h5><button class="btn-close"></button></div>
+  <div class="modal-body">
+    <input id="transferTo" class="form-control mb-2" placeholder="Recipient (email or iban)" required />
+    <input id="transferAmount" class="form-control mb-2" type="number" min="0.01" step="0.01" required />
+    <input id="transferMemo" class="form-control" placeholder="Memo (optional)" />
+  </div>
+  <div class="modal-footer"><button class="btn btn-primary" type="submit">Send</button></div>
+</form></div></div>
+
 
     <hr>
 
@@ -211,6 +300,56 @@
         <button class="btn btn-secondary" id="mbBtnConfirm" type="button">Confirm</button>
       </div>
     </div>
+
+    <!-- Edit Profile Modal -->
+<div class="modal fade" id="modalEditProfile" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="formEditProfile">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Account</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">Display name</label>
+          <input id="profileName" class="form-control" type="text" required />
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Email</label>
+          <input id="profileEmail" class="form-control" type="email" required />
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Phone</label>
+          <input id="profilePhone" class="form-control" type="tel" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnSaveProfile" class="btn btn-primary" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Payment / Link Card Modal -->
+<div class="modal fade" id="modalLinkCard" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="formLinkCard">
+      <div class="modal-header">
+        <h5 class="modal-title">Link card / Pay</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="cardElement" class="mb-3"></div>
+        <div id="cardErrors" class="text-danger small"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnLinkCard" class="btn btn-success" type="submit">Link Card</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
 
     <!-- (اختياري) تسجيل عبر GitHub من خلال Hosted UI -->
     <!-- غيّر القيم الثلاث أدناه لتطابق نطاق الدومين و ClientId و redirect_uri -->
@@ -259,6 +398,10 @@ const REDIRECT_URI   = 'https://alsultanqa.github.io/bioo-vault/';
     gh.href = hosted;
   }
 </script>
+
+<button id="btnEditProfile" class="btn btn-outline-light">Edit Account</button>
+<button id="btnOpenLinkCard" class="btn btn-success">Link Card / Add Payment</button>
+
 
   <!-- Transfers Panel (shows only when signed in) -->
   <div id="mbAppPanel" class="card p-3" style="display:none">
