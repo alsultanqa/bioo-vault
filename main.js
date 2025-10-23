@@ -2671,6 +2671,109 @@ init();
 })();
 // === End patch ===
 
+/***** UI Auth Patch: hide guest forms when signed-in, wire Edit Profile *****/
+(function () {
+  // عناصر واجهة عامة
+  const $ = (id) => document.getElementById(id);
+
+  function setAuthState(signedIn, profile) {
+    const guest = $('guestAuthPanel');
+    const app   = $('mbAppPanel');
+    const badge = $('mbAuthState'); // إن وُجد
+
+    if (guest) guest.classList.toggle('d-none', !!signedIn);
+    if (app)   app.classList.toggle('d-none', !signedIn);
+
+    if (badge) {
+      if (signedIn) {
+        const name = (profile && (profile.name || profile.email)) || 'User';
+        badge.textContent = 'Signed in: ' + name;
+      } else {
+        badge.textContent = 'Please sign in…';
+      }
+    }
+  }
+
+  // تعبئة حقول البروفايل عند الدخول
+  function fillProfileFields(user) {
+    try {
+      const name  = (user.profile && (user.profile.name  || '')) || '';
+      const email = (user.profile && (user.profile.email || '')) || '';
+      const n = $('profileName');  if (n) n.value = name;
+      const e = $('profileEmail'); if (e) e.value = email;
+    } catch {}
+  }
+
+  // ربط زر تعديل الحساب بشكل مؤكد حتى لو حمّل قبل السكربت
+  document.addEventListener('click', (ev) => {
+    if (ev.target && ev.target.id === 'btnEditProfile') {
+      const modalEl = $('modalEditProfile');
+      if (!modalEl) return;
+      const m = bootstrap.Modal.getOrCreateInstance(modalEl);
+      m.show();
+    }
+  }, true);
+
+  // ربط OIDC إن كان موجوداً
+  function wireOIDC() {
+    const um = window.__mbUserManager;
+    if (!um) return;
+
+    um.events.addUserLoaded((user) => {
+      window.__currentUser = user;
+      setAuthState(true, user.profile);
+      fillProfileFields(user);
+      // لو عندك بطاقة محفظة/BalanceChain أظهرها هنا إن رغبت
+      const bcCard = document.getElementById('bcWalletCard');
+      if (bcCard) bcCard.style.display = 'block';
+    });
+
+    um.events.addUserUnloaded(() => {
+      window.__currentUser = null;
+      setAuthState(false);
+      const bcCard = document.getElementById('bcWalletCard');
+      if (bcCard) bcCard.style.display = 'none';
+    });
+
+    // مزامنة الحالة عند التحميل
+    um.getUser().then((u) => {
+      if (u && !u.expired) {
+        window.__currentUser = u;
+        setAuthState(true, u.profile);
+        fillProfileFields(u);
+      } else {
+        setAuthState(false);
+      }
+    }).catch(() => setAuthState(false));
+  }
+
+  // في بعض الصفحات يتم تحميل oidc-client لاحقًا، نعيد المحاولة لمدة قصيرة
+  if (window.__mbUserManager) wireOIDC();
+  else {
+    let tries = 0;
+    const iv = setInterval(() => {
+      tries++;
+      if (window.__mbUserManager) { clearInterval(iv); wireOIDC(); }
+      if (tries > 60) clearInterval(iv);
+    }, 200);
+  }
+
+  // ضمان إخفاء التسجيل بعد العودة من Cognito مباشرة
+  (async function ensureAfterRedirect() {
+    try {
+      // إن كانت دالتك الأصلية handleRedirectCallbackIfNeeded() تعمل، ممتاز.
+      // هنا فقط نحاول قراءة المستخدم إن كان موجوداً وإخفاء النماذج.
+      if (window.__mbUserManager) {
+        const u = await window.__mbUserManager.getUser();
+        if (u && !u.expired) {
+          window.__currentUser = u;
+          setAuthState(true, u.profile);
+          fillProfileFields(u);
+        }
+      }
+    } catch {}
+  })();
+})();
 
 
 // Helper: open vault programmatically from MiniBank card
