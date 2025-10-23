@@ -2634,3 +2634,53 @@ async function writeFileWithHandle(handle, blob) {
 }
 
 init();
+
+// === Unified section switching (patched) ===
+(function(){
+  if (window.__showSectionPatched) return;
+  window.__showSectionPatched = true;
+  const _scrollTop = () => { try { window.scrollTo({top:0, behavior:'smooth'}); } catch(_){} };
+
+  window.showSection = function(id){
+    try {
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active-section'));
+      const el = document.getElementById(id);
+      if (el) el.classList.add('active-section');
+      _scrollTop();
+
+      if (id === 'biovault') {
+        console.log('[BalanceChain] entering BioVault view...');
+        setTimeout(async () => {
+          try {
+            if (!window.__biovaultInitialized && typeof init === 'function') {
+              window.__biovaultInitialized = true;
+              await init();
+            }
+            if (window.vaultUnlocked && typeof revealVaultUI === 'function') {
+              revealVaultUI();
+            }
+          } catch (e) {
+            console.warn('[BalanceChain] init/reveal skipped:', e);
+          }
+        }, 150);
+      }
+    } catch(e){
+      console.warn('[showSection] failed', e);
+    }
+  };
+})();
+// === End patch ===
+
+
+
+// Helper: open vault programmatically from MiniBank card
+window.mbOpenWallet = async function(){
+  try{
+    if (typeof window.showSection === 'function') window.showSection('biovault');
+    if (!window.vaultUnlocked) {
+      const btn = document.getElementById('enterVaultBtn');
+      if (btn) setTimeout(()=>btn.click(), 200);
+    }
+  }catch(e){ console.error('[mbOpenWallet] failed', e); }
+};
+
