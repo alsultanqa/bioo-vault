@@ -99,6 +99,24 @@
     .hidden { display: none; }
     table { width: 100%; }
   </style>
+
+<!-- ⬇️ غلّف كل فورمات التسجيل/الدخول داخل هذا الديف -->
+<div id="guestAuthPanel">
+  <!-- … كل حقول Sign In / Sign Up / Confirm … -->
+</div>
+
+<!-- ⬇️ لوحة التطبيق/الداشبورد التي تُعرض بعد الدخول -->
+<div id="mbAppPanel" class="d-none">
+  <!-- … داشبورد ميني بانك + البروفايل … -->
+  <button id="btnEditProfile" type="button" class="btn btn-outline-primary">Edit Profile</button>
+</div>
+
+<!-- تأكد أن مودال التعديل موجود بهذا الـ id -->
+<div class="modal fade" id="modalEditProfile" tabindex="-1">
+  <!-- … محتوى نموذج التعديل (form id="formEditProfile") … -->
+</div>
+
+
   <!-- Edit Profile Modal -->
 <div class="modal fade" id="modalEditProfile" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
